@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import "./index.css";
 
+/** Top-nav tab order (your requested order) */
 const TABS = [
   "Dashboard",
   "Calendar",
@@ -11,166 +12,225 @@ const TABS = [
   "Finances",
 ];
 
-function DashboardHome({ stats }) {
+/** Small pill for status */
+function StatusPill({ online }) {
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard label="Total Bookings" value={stats?.bookingsTotal} />
-        <StatCard label="Active Rentals" value={stats?.activeRentals} />
-        <StatCard label="Vehicles" value={stats?.vehicles} />
-        <StatCard label="Revenue" value={`$${(stats?.revenue ?? 0).toLocaleString()}`} />
-      </div>
-      <p className="text-xs text-gray-500">
-        Data source: <code>VITE_API_URL</code> → {import.meta.env.VITE_API_URL}
-      </p>
-    </div>
+    <span
+      className={`px-2 py-1 text-xs rounded ${
+        online ? "bg-green-600 text-white" : "bg-red-600 text-white"
+      }`}
+    >
+      {online ? "Live" : "Offline"}
+    </span>
   );
 }
 
+/** Simple stat card */
 function StatCard({ label, value }) {
   return (
-    <div className="bg-gray-800 text-white rounded-md p-4 shadow">
-      <div className="text-xs uppercase opacity-70">{label}</div>
-      <div className="text-2xl font-bold mt-1">{value ?? "—"}</div>
+    <div className="bg-gray-800/70 text-white rounded p-4 shadow">
+      <p className="text-xs uppercase opacity-80 mb-1">{label}</p>
+      <p className="text-2xl font-bold">{value}</p>
     </div>
   );
 }
 
-function CalendarPage() {
+/** Placeholder box for tabs we’ll build later */
+function Placeholder({ title, children }) {
   return (
-    <div className="bg-gray-800 text-white rounded-md p-4">
-      <h2 className="text-lg font-semibold mb-2">Calendar</h2>
-      <p className="opacity-80">Calendar view coming next (month/week/day).</p>
+    <div className="bg-gray-800/60 text-white rounded p-4 shadow">
+      <div className="font-semibold mb-2">{title}</div>
+      <div className="text-sm opacity-90">{children}</div>
     </div>
   );
 }
 
-function BookingsPage() {
+/** Dashboard home showing stats */
+function DashboardHome({ stats }) {
+  const loading = (n = "---") => <span className="opacity-60">{n}</span>;
   return (
-    <div className="bg-gray-800 text-white rounded-md p-4">
-      <h2 className="text-lg font-semibold mb-2">Bookings</h2>
-      <p className="opacity-80">List, add, and edit bookings here.</p>
-    </div>
-  );
-}
-
-function CustomersPage() {
-  return (
-    <div className="bg-gray-800 text-white rounded-md p-4">
-      <h2 className="text-lg font-semibold mb-2">Customers</h2>
-      <p className="opacity-80">Customer directory with search and notes.</p>
-    </div>
-  );
-}
-
-function VehiclesPage() {
-  const [subTab, setSubTab] = useState("Cars");
-  const tabs = ["Cars", "Jet Skis", "Scooters"];
-  return (
-    <div className="bg-gray-800 text-white rounded-md p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold">Vehicles</h2>
-        {/* Dropdown */}
-        <div className="relative">
-          <select
-            className="bg-gray-700 rounded px-3 py-2"
-            value={subTab}
-            onChange={(e) => setSubTab(e.target.value)}
-          >
-            {tabs.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Bookings"
+          value={stats ? stats.bookingsTotal ?? 0 : loading()}
+        />
+        <StatCard
+          label="Active Rentals"
+          value={stats ? stats.activeRentals ?? 0 : loading()}
+        />
+        <StatCard
+          label="Vehicles"
+          value={stats ? stats.vehicles ?? 0 : loading()}
+        />
+        <StatCard
+          label="Revenue"
+          value={
+            stats
+              ? (stats.revenue ?? 0).toLocaleString("en-US", {
+                  style: "currency",
+                  currency: "USD",
+                  maximumFractionDigits: 0,
+                })
+              : loading("$—")
+          }
+        />
       </div>
 
-      <div className="opacity-80">
-        {subTab === "Cars" && <p>Cars list (add/edit status, plate, mileage).</p>}
-        {subTab === "Jet Skis" && <p>Jet Ski rentals (hours, maintenance, fuel).</p>}
-        {subTab === "Scooters" && <p>Scooters (battery levels, service intervals).</p>}
-      </div>
-    </div>
-  );
-}
-
-function TeamChatPage() {
-  return (
-    <div className="bg-gray-800 text-white rounded-md p-4">
-      <h2 className="text-lg font-semibold mb-2">Team Chat</h2>
-      <p className="opacity-80">Real-time chat connects once we add sockets.</p>
-    </div>
-  );
-}
-
-function FinancesPage() {
-  return (
-    <div className="bg-gray-800 text-white rounded-md p-4">
-      <h2 className="text-lg font-semibold mb-2">Finances</h2>
-      <p className="opacity-80">Revenue breakdown and payouts will live here.</p>
+      <p className="text-xs text-gray-300">
+        Data source: <code>VITE_API_URL</code> →{" "}
+        <span className="underline decoration-dotted">
+          {import.meta.env.VITE_API_URL}
+        </span>
+      </p>
     </div>
   );
 }
 
 export default function App() {
   const [active, setActive] = useState("Dashboard");
+  const [status, setStatus] = useState("offline"); // "online" | "offline"
   const [stats, setStats] = useState(null);
-  const [status, setStatus] = useState("Offline");
 
-  // Fetch live stats from your server
+  // ---- Server health + summary polling (every 10s) ----
   useEffect(() => {
-    const base = import.meta.env.VITE_API_URL;
-    async function go() {
+    const API = import.meta.env.VITE_API_URL;
+
+    const check = async () => {
       try {
-        const h = await fetch(`${base}/health`).then(r => r.json());
-        setStatus(h.status === "ok" ? "Live" : "Offline");
-        const s = await fetch(`${base}/stats/summary`).then(r => r.json());
-        setStats(s);
-      } catch (e) {
-        setStatus("Offline");
+        // 1) health check
+        const h = await fetch(`${API}/health`, { cache: "no-store" });
+        if (!h.ok) throw new Error("health failed");
+        setStatus("online");
+
+        // 2) summary stats
+        const s = await fetch(`${API}/stats/summary`, { cache: "no-store" });
+        if (s.ok) {
+          const data = await s.json();
+          setStats(data);
+        }
+      } catch (err) {
+        setStatus("offline");
+        setStats(null);
       }
-    }
-    go();
+    };
+
+    check(); // run immediately on load
+    const id = setInterval(check, 10000); // poll every 10s
+    return () => clearInterval(id);
   }, []);
 
+  // ---- Simple tab views (placeholders for now) ----
+  const renderBody = () => {
+    switch (active) {
+      case "Dashboard":
+        return <DashboardHome stats={stats} />;
+
+      case "Calendar":
+        return (
+          <Placeholder title="Calendar">
+            Calendar view coming next (month / week / day).
+          </Placeholder>
+        );
+
+      case "Bookings":
+        return (
+          <Placeholder title="Bookings">
+            Booking list, filters, and create/edit booking will go here.
+          </Placeholder>
+        );
+
+      case "Customers":
+        return (
+          <Placeholder title="Customers">
+            Customer list, profiles, and search will go here.
+          </Placeholder>
+        );
+
+      case "Vehicles":
+        return (
+          <Placeholder title="Vehicles">
+            Vehicles &amp; Power Sports (with dropdowns) will go here.
+          </Placeholder>
+        );
+
+      case "Team Chat":
+        return (
+          <Placeholder title="Team Chat">
+            Real-time team chat (channels, mentions) coming soon.
+          </Placeholder>
+        );
+
+      case "Finances":
+        return (
+          <Placeholder title="Finances">
+            Payouts, invoices, expense tracking and reports coming soon.
+          </Placeholder>
+        );
+
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-black text-white">
-      {/* Top bar */}
-      <div className="bg-green-600 p-3">
-        <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <div className="font-bold">K.V. Rentals Team Dashboard</div>
-          <nav className="flex gap-2 flex-wrap">
+    <div className="min-h-screen bg-gray-900 text-gray-100">
+      {/* Header */}
+      <header className="bg-green-600 text-white shadow">
+        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="font-bold">K.V. Rentals</div>
+            <span className="opacity-90">Team Dashboard</span>
+          </div>
+
+          {/* Tabs */}
+          <nav className="flex gap-2">
             {TABS.map((t) => (
               <button
                 key={t}
                 onClick={() => setActive(t)}
-                className={`px-3 py-1 rounded ${active === t ? "bg-black/30" : "bg-black/10"}`}
+                className={`px-3 py-1 rounded text-sm ${
+                  active === t ? "bg-green-800" : "bg-green-700 hover:bg-green-800"
+                }`}
               >
                 {t}
               </button>
             ))}
           </nav>
-          <div className="ml-auto text-xs">
-            <span
-              className={`inline-flex items-center px-2 py-1 rounded ${
-                status === "Live" ? "bg-emerald-600" : "bg-red-600"
-              }`}
-            >
-              {status}
-            </span>
+
+          <div className="text-xs">
+            <StatusPill online={status === "online"} />
           </div>
+        </div>
+      </header>
+
+      {/* Summary header row */}
+      <div className="max-w-6xl mx-auto px-4 mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-gray-800/60 rounded p-4">
+          <div className="text-xs uppercase opacity-70 mb-1">Status</div>
+          <StatusPill online={status === "online"} />
+        </div>
+
+        <div className="bg-gray-800/60 rounded p-4">
+          <div className="text-xs uppercase opacity-70 mb-1">Modules</div>
+          <div className="font-semibold">
+            Calendar • Bookings • Customers • Vehicles
+          </div>
+        </div>
+
+        <div className="bg-gray-800/60 rounded p-4">
+          <div className="text-xs uppercase opacity-70 mb-1">Next</div>
+          <div className="font-semibold">Connect Server</div>
         </div>
       </div>
 
-      {/* Page content */}
-      <div className="max-w-6xl mx-auto p-4">
-        {active === "Dashboard" && <DashboardHome stats={stats} />}
-        {active === "Calendar" && <CalendarPage />}
-        {active === "Bookings" && <BookingsPage />}
-        {active === "Customers" && <CustomersPage />}
-        {active === "Vehicles" && <VehiclesPage />}
-        {active === "Team Chat" && <TeamChatPage />}
-        {active === "Finances" && <FinancesPage />}
-      </div>
+      {/* Main content */}
+      <main className="max-w-6xl mx-auto px-4 py-6">{renderBody()}</main>
+
+      {/* Footer */}
+      <footer className="max-w-6xl mx-auto px-4 pb-8 text-xs text-gray-400">
+        © {new Date().getFullYear()} K.V. Rentals. All rights reserved.
+      </footer>
     </div>
   );
 }
