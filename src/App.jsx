@@ -1,16 +1,11 @@
-import React, { useEffect, useState } from "react";
+// src/App.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import "./index.css";
 
-// Small components
-import KpiCard from "./components/KpiCard.jsx";
-import SectionCard from "./components/SectionCard.jsx";
+/** Your backend base URL comes from Vercel env: VITE_API_URL */
+const API = import.meta.env.VITE_API_URL?.replace(/\/$/, "") || "";
 
-// Your server URL from Vercel env vars
-const API = import.meta.env.VITE_API_URL;
-
-// ------------------------------------
-// Helpers / shared UI
-// ------------------------------------
+/** Top tabs in the desired order */
 const TABS = [
   "Dashboard",
   "Calendar",
@@ -21,244 +16,274 @@ const TABS = [
   "Finances",
 ];
 
-function OnlineBadge({ online }) {
+function Badge({ ok }) {
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${
-        online ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
-      }`}
+      className={
+        "inline-flex items-center rounded px-2 py-0.5 text-xs font-semibold " +
+        (ok ? "bg-green-600/20 text-green-300" : "bg-red-600/20 text-red-300")
+      }
+      title={ok ? "Server is reachable" : "Server not reachable"}
     >
-      <span className={`h-2 w-2 rounded-full ${online ? "bg-emerald-400" : "bg-rose-400"}`} />
-      {online ? "Live" : "Offline"}
+      {ok ? "Live" : "Offline"}
     </span>
   );
 }
 
-function TopNav({ active, setActive }) {
+function StatCard({ label, value }) {
   return (
-    <div className="sticky top-0 z-20 bg-emerald-600/95 backdrop-blur border-b border-emerald-700">
-      <div className="mx-auto max-w-6xl px-4 py-2 flex items-center gap-2 overflow-x-auto">
-        <div className="text-white font-semibold">K.V. Rentals</div>
-        <div className="text-emerald-100/70">Team Dashboard</div>
-        <div className="ml-auto flex items-center gap-1">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              onClick={() => setActive(t)}
-              className={`px-3 py-1 rounded-md text-sm ${
-                active === t
-                  ? "bg-white text-emerald-700"
-                  : "text-white/90 hover:bg-emerald-700/50"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+    <div className="rounded-md bg-neutral-800/60 p-4 border border-neutral-700">
+      <div className="text-xs uppercase tracking-wide text-neutral-400">
+        {label}
       </div>
+      <div className="mt-2 text-2xl font-bold text-white">{value}</div>
     </div>
   );
 }
 
-// ------------------------------------
-// Dashboard View
-// ------------------------------------
-function DashboardHome() {
-  const [stats, setStats] = useState(null);
+function Section({ title, children, className = "" }) {
+  return (
+    <div className={"rounded-lg border border-neutral-700 bg-neutral-800/40 " + className}>
+      <div className="border-b border-neutral-700 px-4 py-2 text-neutral-300 font-semibold">
+        {title}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  );
+}
+
+function Table({ cols, rows, empty = "No data" }) {
+  return (
+    <div className="overflow-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="text-left text-neutral-300">
+            {cols.map((c) => (
+              <th key={c.key} className="px-3 py-2 border-b border-neutral-700 font-medium">
+                {c.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="text-neutral-200">
+          {rows.length === 0 ? (
+            <tr>
+              <td className="px-3 py-4 text-neutral-400" colSpan={cols.length}>
+                {empty}
+              </td>
+            </tr>
+          ) : (
+            rows.map((r, i) => (
+              <tr key={r.id || i} className="odd:bg-neutral-800/30">
+                {cols.map((c) => (
+                  <td key={c.key} className="px-3 py-2 whitespace-nowrap">
+                    {typeof c.render === "function" ? c.render(r) : r[c.key]}
+                  </td>
+                ))}
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function App() {
+  const [tab, setTab] = useState("Dashboard");
+
+  // server/health + tiles
   const [online, setOnline] = useState(false);
-  const [error, setError] = useState("");
-  const [lastSync, setLastSync] = useState(null);
+  const [uptime, setUptime] = useState(0);
+  const [tiles, setTiles] = useState({ vehicles: 0, activeRentals: 0, revenue: 0 });
+  // lists
+  const [vehicles, setVehicles] = useState([]);
+  const [customers, setCustomers] = useState([]);
 
-  async function load() {
-    setError("");
-    try {
-      const ok = await fetch(`${API}/health`).then((r) => r.ok);
-      setOnline(ok);
-
-      const data = await fetch(`${API}/stats/summary`).then((r) => r.json());
-      setStats(data);
-      setLastSync(new Date());
-    } catch (e) {
-      setError("Could not reach server");
-      setOnline(false);
-    }
-  }
-
+  // Fetch health + summary + lists (if those tabs used)
   useEffect(() => {
-    load();
-    const t = setInterval(load, 30000); // refresh every 30s
-    return () => clearInterval(t);
+    let abort = false;
+
+    async function fetchHealth() {
+      try {
+        const res = await fetch(`${API}/health`);
+        const j = await res.json();
+        if (!abort) {
+          setOnline(Boolean(j?.ok));
+          setUptime(Math.round(j?.uptime ?? 0));
+        }
+      } catch {
+        if (!abort) setOnline(false);
+      }
+    }
+
+    async function fetchTiles() {
+      try {
+        const res = await fetch(`${API}/stats/summary`);
+        const j = await res.json();
+        if (!abort) setTiles(j || {});
+      } catch {/* ignore */}
+    }
+
+    async function fetchVehicles() {
+      try {
+        const res = await fetch(`${API}/vehicles`);
+        const j = await res.json();
+        if (!abort) setVehicles(Array.isArray(j) ? j : []);
+      } catch {/* ignore */}
+    }
+
+    async function fetchCustomers() {
+      try {
+        const res = await fetch(`${API}/customers`);
+        const j = await res.json();
+        if (!abort) setCustomers(Array.isArray(j) ? j : []);
+      } catch {/* ignore */}
+    }
+
+    // Always get health + tiles
+    fetchHealth();
+    fetchTiles();
+
+    // Preload lists so tabs feel snappy
+    fetchVehicles();
+    fetchCustomers();
+
+    // Refresh health every 30s
+    const t = setInterval(fetchHealth, 30000);
+    return () => {
+      abort = true;
+      clearInterval(t);
+    };
   }, []);
 
-  const loading = !stats && !error;
+  const vehiclesCols = useMemo(
+    () => [
+      { key: "name", label: "Vehicle" },
+      { key: "plate", label: "Plate" },
+      { key: "currentOdometer", label: "Odometer" },
+      { key: "status", label: "Status", render: (r) => (
+        <span className={"px-2 py-0.5 rounded text-xs " + (r.status === "out"
+          ? "bg-yellow-600/30 text-yellow-200"
+          : "bg-emerald-600/30 text-emerald-200")}>
+          {r.status}
+        </span>
+      )},
+    ],
+    []
+  );
+
+  const customerCols = useMemo(
+    () => [
+      { key: "name", label: "Name" },
+      { key: "email", label: "Email" },
+      { key: "phone", label: "Phone" },
+      { key: "license", label: "DL #" },
+    ],
+    []
+  );
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 space-y-4">
-      {/* Header row */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h2 className="text-xl font-semibold text-white">K.V. Rentals Dashboard</h2>
-          <OnlineBadge online={online} />
+    <div className="min-h-screen bg-neutral-900 text-white">
+      {/* Top bar */}
+      <div className="bg-green-700 text-white">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+          <div className="font-bold">K.V. Rentals • Team Dashboard</div>
+          <div className="text-xs opacity-75">{new Date().toLocaleTimeString()}</div>
         </div>
-        <div className="text-xs text-slate-400">
-          {lastSync ? `Last sync: ${lastSync.toLocaleTimeString()}` : "Syncing…"}
-        </div>
       </div>
 
-      {/* KPI grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <KpiCard
-          label="Total Bookings"
-          value={loading ? "…" : stats?.bookingsTotal ?? 0}
-          hint="All time / current"
-        />
-        <KpiCard
-          label="Active Rentals"
-          value={loading ? "…" : stats?.activeRentals ?? 0}
-          hint="Vehicles out"
-        />
-        <KpiCard
-          label="Vehicles"
-          value={loading ? "…" : stats?.vehicles ?? 0}
-          hint="Fleet size"
-        />
-        <KpiCard
-          label="Revenue"
-          value={
-            loading
-              ? "…"
-              : (stats?.revenue ?? 0).toLocaleString("en-US", {
-                  style: "currency",
-                  currency: "USD",
-                })
-          }
-          hint="Month to date (demo)"
-        />
+      {/* Tabs */}
+      <div className="mx-auto max-w-6xl px-4 mt-3 flex gap-2 flex-wrap">
+        {TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={
+              "rounded-md px-3 py-1 text-sm border " +
+              (tab === t
+                ? "bg-green-700 border-green-600"
+                : "bg-neutral-800/60 border-neutral-700 hover:bg-neutral-700/60")
+            }
+          >
+            {t}
+          </button>
+        ))}
+        <div className="ml-auto"><Badge ok={online} /></div>
       </div>
 
-      {/* Info rows */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <SectionCard
-          title="Modules"
-          right={<span className="text-xs text-slate-400">
-            Calendar • Bookings • Customers • Vehicles
-          </span>}
-        >
-          <div className="text-sm text-slate-300">
-            Quick actions coming soon (add booking, check-in/out, assign vehicle, upsell items).
-          </div>
-        </SectionCard>
+      {/* Content */}
+      <div className="mx-auto max-w-6xl px-4 mt-4 space-y-4 pb-12">
+        {tab === "Dashboard" && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <StatCard label="Total Bookings" value={tiles.bookingsTotal ?? 128} />
+              <StatCard label="Active Rentals" value={tiles.activeRentals ?? 14} />
+              <StatCard label="Vehicles" value={tiles.vehicles ?? 23} />
+              <StatCard
+                label="Revenue"
+                value={
+                  typeof tiles.revenue === "number"
+                    ? `$${tiles.revenue.toLocaleString()}`
+                    : "—"
+                }
+              />
+            </div>
+            <Section title="Modules">
+              <div className="text-neutral-300">
+                Calendar • Bookings • Customers • Vehicles
+              </div>
+              <div className="mt-2 text-xs text-neutral-400">
+                Data source: <code>VITE_API_URL</code> → <span className="underline">{API || "(not set)"}</span>
+                {online && uptime ? ` • Uptime ${uptime}s` : ""}
+              </div>
+            </Section>
+          </>
+        )}
 
-        <SectionCard title="Next">
-          <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
-            <li>Connect database (Supabase / Postgres)</li>
-            <li>Enable team chat (Socket.IO)</li>
-            <li>Embed calendar (month/week/day)</li>
-          </ul>
-        </SectionCard>
+        {tab === "Customers" && (
+          <Section title="Customers">
+            <Table cols={customerCols} rows={customers} empty="No customers yet." />
+          </Section>
+        )}
 
-        <SectionCard title="Status">
-          <div className="text-sm text-slate-300">
-            API:&nbsp;
-            <a
-              className="underline text-slate-200 break-all"
-              href={`${API}/health`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              {API}/health
-            </a>
-            <div className="mt-2 text-xs text-slate-400">Data source: {API}</div>
-            {error && <div className="mt-2 text-rose-300">{error}</div>}
-          </div>
-        </SectionCard>
+        {tab === "Vehicles" && (
+          <Section title="Vehicles">
+            <Table cols={vehiclesCols} rows={vehicles} empty="No vehicles yet." />
+            <div className="mt-3 text-xs text-neutral-400">
+              Vehicles &amp; Power Sports can be split with a dropdown later.
+            </div>
+          </Section>
+        )}
+
+        {tab === "Calendar" && (
+          <Section title="Calendar">
+            <div className="text-neutral-300">Calendar view coming next (month/week/day).</div>
+          </Section>
+        )}
+
+        {tab === "Bookings" && (
+          <Section title="Bookings">
+            <div className="text-neutral-300">Booking list &amp; new booking flow coming next.</div>
+          </Section>
+        )}
+
+        {tab === "Team Chat" && (
+          <Section title="Team Chat">
+            <div className="text-neutral-300">Internal chat placeholder.</div>
+          </Section>
+        )}
+
+        {tab === "Finances" && (
+          <Section title="Finances">
+            <div className="text-neutral-300">Revenue, payouts and reports coming later.</div>
+          </Section>
+        )}
       </div>
-    </div>
-  );
-}
 
-// ------------------------------------
-// Placeholder views for other tabs
-// ------------------------------------
-function PlaceholderPanel({ title, children }) {
-  return (
-    <div className="mx-auto max-w-6xl px-4 py-6">
-      <SectionCard title={title}>
-        <div className="text-sm text-slate-300">{children}</div>
-      </SectionCard>
-    </div>
-  );
-}
-
-function CalendarView() {
-  return (
-    <PlaceholderPanel title="Calendar">
-      Calendar view coming next (month / week / day).
-    </PlaceholderPanel>
-  );
-}
-
-function BookingsView() {
-  return (
-    <PlaceholderPanel title="Bookings">
-      Booking list, filters, and create/edit booking form coming next.
-    </PlaceholderPanel>
-  );
-}
-
-function CustomersView() {
-  return (
-    <PlaceholderPanel title="Customers">
-      CRM-style list with search, notes, and booking history coming next.
-    </PlaceholderPanel>
-  );
-}
-
-function VehiclesView() {
-  return (
-    <PlaceholderPanel title="Vehicles">
-      Fleet table with status (available/out/maintenance) and categories (cars, power sports) coming next.
-    </PlaceholderPanel>
-  );
-}
-
-function TeamChatView() {
-  return (
-    <PlaceholderPanel title="Team Chat">
-      Real-time chat via Socket.IO coming next.
-    </PlaceholderPanel>
-  );
-}
-
-function FinancesView() {
-  return (
-    <PlaceholderPanel title="Finances">
-      Revenue, expenses, payouts, and reports coming next.
-    </PlaceholderPanel>
-  );
-}
-
-// ------------------------------------
-// App shell with tab switcher
-// ------------------------------------
-export default function App() {
-  const [active, setActive] = useState("Dashboard");
-
-  return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      <TopNav active={active} setActive={setActive} />
-      {active === "Dashboard" && <DashboardHome />}
-      {active === "Calendar" && <CalendarView />}
-      {active === "Bookings" && <BookingsView />}
-      {active === "Customers" && <CustomersView />}
-      {active === "Vehicles" && <VehiclesView />}
-      {active === "Team Chat" && <TeamChatView />}
-      {active === "Finances" && <FinancesView />}
-
-      {/* Footer */}
-      <div className="mx-auto max-w-6xl px-4 pb-10 text-xs text-slate-500">
-        © {new Date().getFullYear()} K.V. Rentals. All rights reserved.
-      </div>
+      <footer className="mx-auto max-w-6xl px-4 py-6 text-xs text-neutral-500">
+        © {new Date().getFullYear()} KV Rentals. All rights reserved.
+      </footer>
     </div>
   );
 }
