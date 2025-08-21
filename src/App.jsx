@@ -1,76 +1,105 @@
-// src/App.jsx (REPLACE THE WHOLE FILE WITH THIS)
-
 import React, { useEffect, useState } from "react";
 import "./index.css";
 
-// -------- helper: API base (from Vercel env or global) ----------
-const API = import.meta?.env?.VITE_API_URL || window.VITE_API_URL || "";
+// ======= Config =======
+const API_BASE = import.meta.env.VITE_API_URL || "";
 
-// ----------- Small shared UI bits -----------
-const Tag = ({ children, tone = "default" }) => {
-  const tones = {
-    default: "bg-zinc-800 text-zinc-200 border-zinc-700",
-    green: "bg-emerald-600/20 text-emerald-300 border-emerald-600/40",
-    red: "bg-rose-600/20 text-rose-300 border-rose-600/40",
-    amber: "bg-amber-500/20 text-amber-300 border-amber-500/40",
-  };
-  return (
-    <span className={`px-2 py-0.5 text-xs border rounded ${tones[tone] || tones.default}`}>
-      {children}
-    </span>
-  );
-};
+// Simple helper to fetch JSON with basic error handling
+async function fetchJSON(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error(`Fetch failed: ${path} (${res.status})`);
+  return res.json();
+}
 
-const Card = ({ title, children, right }) => (
-  <div className="rounded border border-zinc-800 bg-zinc-900/50">
-    <div className="px-3 py-2 border-b border-zinc-800 flex items-center justify-between">
-      <div className="text-sm text-gray-300">{title}</div>
-      {right}
+// Small UI helpers
+const Pill = ({ children, tone = "slate" }) => (
+  <span
+    className={`inline-flex items-center rounded-md px-2 py-1 text-xs font-medium bg-${tone}-800 text-${tone}-100`}
+    style={{
+      backgroundColor: tone === "green" ? "#064e3b" : tone === "red" ? "#7f1d1d" : tone === "amber" ? "#78350f" : "#1f2937",
+      color: "#e5e7eb",
+    }}
+  >
+    {children}
+  </span>
+);
+
+const StatCard = ({ label, value }) => (
+  <div className="bg-[#111418] rounded-md p-4 border border-[#23262d]">
+    <div className="text-xs text-gray-400">{label}</div>
+    <div className="mt-2 text-2xl font-semibold text-gray-100 tabular-nums">
+      {value ?? "—"}
     </div>
-    <div className="p-3">{children}</div>
   </div>
 );
 
-// ================== VEHICLES ==================
+const Modal = ({ open, title, children, onClose, onSave, saveLabel = "Save" }) => {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+      <div className="w-[560px] max-w-[92vw] rounded-lg border border-[#2a2e36] bg-[#0c0f14] shadow-xl">
+        <div className="flex items-center justify-between border-b border-[#2a2e36] px-4 py-3">
+          <h3 className="text-sm font-semibold text-gray-100">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200 text-lg">×</button>
+        </div>
+        <div className="p-4">{children}</div>
+        <div className="flex justify-end gap-2 px-4 pb-4">
+          <button onClick={onClose} className="px-3 py-2 text-sm rounded-md border border-[#2a2e36] text-gray-200 hover:bg-[#141821]">Cancel</button>
+          <button onClick={onSave} className="px-3 py-2 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-500">
+            {saveLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ======= Vehicles Tab =======
 function VehiclesTab() {
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [vehicles, setVehicles] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [draft, setDraft] = useState(null);
+  const [live, setLive] = useState(false);
+
+  const [editing, setEditing] = useState(null); // vehicle object being edited
+  const [draft, setDraft] = useState(null);     // working copy
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
     (async () => {
       try {
-        const res = await fetch(`${API}/vehicles`);
-        const data = await res.json();
-        const normalized = (Array.isArray(data) ? data : []).map((v) => ({
-          id: v.id ?? crypto.randomUUID(),
-          name: v.name ?? `${v.make ?? ""} ${v.model ?? ""}`.trim(),
-          year: v.year ?? "",
-          make: v.make ?? "",
-          model: v.model ?? "",
-          vin: v.vin ?? "",
-          color: v.color ?? "",
-          plate: v.plate ?? "",
-          currentOdometer: v.currentOdometer ?? v.odometer ?? 0,
-          status: v.status ?? "available",
-        }));
-        if (!cancelled) setVehicles(normalized);
-      } catch (e) {
-        console.error("Failed to load vehicles:", e);
+        const health = await fetchJSON("/health");
+        if (mounted) setLive(!!health.ok);
+      } catch {
+        setLive(false);
+      }
+      try {
+        const data = await fetchJSON("/vehicles");
+        if (mounted) setRows(data || []);
+      } catch {
+        if (mounted) setRows([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => (mounted = false);
   }, []);
 
-  const openNew = () => {
-    setDraft({
-      id: crypto.randomUUID(),
-      name: "",
-      year: "",
+  const onOpen = (veh) => {
+    setEditing(veh);
+    setDraft({ ...veh });
+  };
+
+  const onSave = () => {
+    // client-side update only (mock). In the real app we’ll PATCH to the server.
+    setRows((prev) => prev.map((v) => (v.id === draft.id ? { ...draft } : v)));
+    setEditing(null);
+    setDraft(null);
+  };
+
+  const addNew = () => {
+    const v = {
+      id: `veh_${Date.now()}`,
+      year: 2022,
       make: "",
       model: "",
       vin: "",
@@ -78,440 +107,388 @@ function VehiclesTab() {
       plate: "",
       currentOdometer: 0,
       status: "available",
-    });
-    setShowModal(true);
-  };
-
-  const openEdit = (v) => {
+    };
+    setRows((prev) => [v, ...prev]);
+    setEditing(v);
     setDraft({ ...v });
-    setShowModal(true);
-  };
-
-  const saveDraft = () => {
-    // local-only for now
-    setVehicles((prev) => {
-      const i = prev.findIndex((p) => p.id === draft.id);
-      const copy = [...prev];
-      if (i === -1) copy.push(draft);
-      else copy[i] = draft;
-      return copy;
-    });
-    setShowModal(false);
-  };
-
-  const updateStatusInline = (id, next) => {
-    setVehicles((prev) => prev.map((v) => (v.id === id ? { ...v, status: next } : v)));
   };
 
   return (
-    <div className="space-y-3">
-      <Card
-        title="Vehicles"
-        right={
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-100">Vehicles</h2>
+        <div className="flex items-center gap-2">
+          <Pill tone={live ? "green" : "red"}>{live ? "Live" : "Offline"}</Pill>
           <button
-            onClick={openNew}
-            className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700"
+            onClick={addNew}
+            className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-500"
           >
             + Add Vehicle
           </button>
-        }
-      >
-        {loading ? (
-          <div className="text-sm text-gray-400">Loading vehicles…</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-left text-gray-300">
-                <tr>
-                  <th className="px-3 py-2">Vehicle</th>
-                  <th className="px-3 py-2">Plate</th>
-                  <th className="px-3 py-2">Odometer</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 w-28">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {vehicles.map((v) => (
-                  <tr key={v.id} className="hover:bg-zinc-900/40">
-                    <td className="px-3 py-2">
-                      <div className="font-medium">{v.name || "Untitled vehicle"}</div>
-                      <div className="text-xs text-gray-400">{[v.year, v.make, v.model].filter(Boolean).join(" • ")}</div>
-                    </td>
-                    <td className="px-3 py-2">{v.plate}</td>
-                    <td className="px-3 py-2">{String(v.currentOdometer)}</td>
-                    <td className="px-3 py-2">
-                      <select
-                        value={v.status}
-                        onChange={(e) => updateStatusInline(v.id, e.target.value)}
-                        className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm"
-                      >
-                        <option value="available">available</option>
-                        <option value="out">out</option>
-                        <option value="maintenance">maintenance</option>
-                        <option value="inactive">inactive</option>
-                      </select>
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        onClick={() => openEdit(v)}
-                        className="px-2 py-1 text-xs rounded border border-zinc-600 hover:bg-zinc-800"
-                      >
-                        View / Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {vehicles.length === 0 && (
-                  <tr>
-                    <td colSpan="5" className="px-3 py-6 text-center text-gray-400">
-                      No vehicles yet. Click “Add Vehicle”.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="text-xs text-gray-500 mt-2">
-          (Edits are local only—mock. We’ll wire Save to the server later.)
-        </p>
-      </Card>
-
-      {showModal && draft && (
-        <VehicleModal
-          draft={draft}
-          setDraft={setDraft}
-          onCancel={() => setShowModal(false)}
-          onSave={saveDraft}
-        />
-      )}
-    </div>
-  );
-}
-
-function VehicleModal({ draft, setDraft, onCancel, onSave }) {
-  const Field = ({ label, prop, type = "text", placeholder = "" }) => (
-    <label className="block">
-      <span className="text-xs text-gray-400">{label}</span>
-      <input
-        type={type}
-        value={draft[prop] ?? ""}
-        onChange={(e) =>
-          setDraft((d) => ({
-            ...d,
-            [prop]: type === "number" ? Number(e.target.value || 0) : e.target.value,
-          }))
-        }
-        placeholder={placeholder}
-        className="mt-1 w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm"
-      />
-    </label>
-  );
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl rounded-lg bg-zinc-900 border border-zinc-700">
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-          <div className="font-semibold">Vehicle Profile</div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-200 text-sm">✕</button>
-        </div>
-
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Name" prop="name" placeholder="e.g., Toyota RAV4" />
-          <Field label="Plate" prop="plate" placeholder="ABC-123" />
-          <Field label="Year" prop="year" type="number" placeholder="2021" />
-          <Field label="Make" prop="make" placeholder="Toyota" />
-          <Field label="Model" prop="model" placeholder="RAV4" />
-          <Field label="VIN" prop="vin" placeholder="17-char VIN" />
-          <Field label="Color" prop="color" placeholder="Silver" />
-          <Field label="Odometer" prop="currentOdometer" type="number" placeholder="41250" />
-          <label className="block">
-            <span className="text-xs text-gray-400">Status</span>
-            <select
-              value={draft.status}
-              onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}
-              className="mt-1 w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm"
-            >
-              <option value="available">available</option>
-              <option value="out">out</option>
-              <option value="maintenance">maintenance</option>
-              <option value="inactive">inactive</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="px-4 py-3 border-t border-zinc-800 flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 text-sm rounded border border-zinc-600 hover:bg-zinc-800">Cancel</button>
-          <button onClick={onSave} className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700">Save</button>
         </div>
       </div>
+
+      <div className="bg-[#0c0f14] rounded-md border border-[#23262d] overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-[#0e1218] text-gray-400">
+            <tr>
+              <th className="px-3 py-2 text-left">Vehicle</th>
+              <th className="px-3 py-2 text-left">Plate</th>
+              <th className="px-3 py-2 text-left">Odometer</th>
+              <th className="px-3 py-2 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td className="px-3 py-4 text-gray-400" colSpan={4}>Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td className="px-3 py-4 text-gray-400" colSpan={4}>No vehicles yet.</td></tr>
+            ) : (
+              rows.map((v) => (
+                <tr
+                  key={v.id}
+                  className="border-t border-[#23262d] hover:bg-[#121723] cursor-pointer"
+                  onClick={() => onOpen(v)}
+                >
+                  <td className="px-3 py-2 text-gray-100">
+                    {v.year ? `${v.year} ${v.make} ${v.model}`.trim() : `${v.make} ${v.model}`.trim() || "—"}
+                  </td>
+                  <td className="px-3 py-2 text-gray-200">{v.plate || "—"}</td>
+                  <td className="px-3 py-2 text-gray-200 tabular-nums">{v.currentOdometer?.toLocaleString?.() ?? "—"}</td>
+                  <td className="px-3 py-2">
+                    <Pill tone={v.status === "available" ? "green" : v.status === "out" ? "amber" : "slate"}>
+                      {v.status || "—"}
+                    </Pill>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal
+        open={!!editing}
+        title="Vehicle Profile"
+        onClose={() => { setEditing(null); setDraft(null); }}
+        onSave={onSave}
+        saveLabel="Save Vehicle"
+      >
+        {draft && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Year</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                type="number"
+                value={draft.year ?? ""}
+                onChange={(e) => setDraft({ ...draft, year: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Make</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.make ?? ""}
+                onChange={(e) => setDraft({ ...draft, make: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Model</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.model ?? ""}
+                onChange={(e) => setDraft({ ...draft, model: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">VIN</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.vin ?? ""}
+                onChange={(e) => setDraft({ ...draft, vin: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Color</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.color ?? ""}
+                onChange={(e) => setDraft({ ...draft, color: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">License Plate</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.plate ?? ""}
+                onChange={(e) => setDraft({ ...draft, plate: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Odometer</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                type="number"
+                value={draft.currentOdometer ?? 0}
+                onChange={(e) => setDraft({ ...draft, currentOdometer: Number(e.target.value) })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Status</label>
+              <select
+                className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.status ?? "available"}
+                onChange={(e) => setDraft({ ...draft, status: e.target.value })}
+              >
+                <option value="available">available</option>
+                <option value="out">out</option>
+                <option value="maintenance">maintenance</option>
+              </select>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
 
-// ================== CUSTOMERS ==================
+// ======= Customers Tab =======
 function CustomersTab() {
-  const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState([]);
-  const [show, setShow] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [live, setLive] = useState(false);
+
+  const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState(null);
 
   useEffect(() => {
-    let cancelled = false;
+    let mounted = true;
     (async () => {
       try {
-        const res = await fetch(`${API}/customers`);
-        const data = await res.json();
-        const normalized = (Array.isArray(data) ? data : []).map((c, i) => ({
-          id: c.id ?? `cust_${i}`,
-          name: c.name ?? "",
-          email: c.email ?? "",
-          phone: c.phone ?? "",
-          license: c.license ?? "",
-          status: c.status ?? "active",
-        }));
-        if (!cancelled) setRows(normalized);
-      } catch (e) {
-        console.error("Failed to load customers:", e);
+        const health = await fetchJSON("/health");
+        if (mounted) setLive(!!health.ok);
+      } catch {
+        setLive(false);
+      }
+      try {
+        const data = await fetchJSON("/customers");
+        if (mounted) setRows(data || []);
+      } catch {
+        if (mounted) setRows([]);
       } finally {
-        if (!cancelled) setLoading(false);
+        if (mounted) setLoading(false);
       }
     })();
-    return () => { cancelled = true; };
+    return () => (mounted = false);
   }, []);
 
-  const openNew = () => {
-    setDraft({ id: crypto.randomUUID(), name: "", email: "", phone: "", license: "", status: "active" });
-    setShow(true);
+  const onOpen = (c) => {
+    setEditing(c);
+    setDraft({ ...c });
   };
-  const openEdit = (c) => { setDraft({ ...c }); setShow(true); };
-  const save = () => {
-    setRows((prev) => {
-      const i = prev.findIndex((p) => p.id === draft.id);
-      const copy = [...prev];
-      if (i === -1) copy.push(draft); else copy[i] = draft;
-      return copy;
-    });
-    setShow(false);
+
+  const onSave = () => {
+    setRows((prev) => prev.map((c) => (c.id === draft.id ? { ...draft } : c)));
+    setEditing(null);
+    setDraft(null);
+  };
+
+  const addNew = () => {
+    const c = {
+      id: `cust_${Date.now()}`,
+      name: "",
+      phone: "",
+      email: "",
+      dlNumber: "",
+    };
+    setRows((prev) => [c, ...prev]);
+    setEditing(c);
+    setDraft({ ...c });
   };
 
   return (
-    <div className="space-y-3">
-      <Card
-        title="Customers"
-        right={
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-100">Customers</h2>
+        <div className="flex items-center gap-2">
+          <Pill tone={live ? "green" : "red"}>{live ? "Live" : "Offline"}</Pill>
           <button
-            onClick={openNew}
-            className="px-3 py-1.5 rounded bg-emerald-600 text-white text-sm hover:bg-emerald-700"
+            onClick={addNew}
+            className="px-3 py-2 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-500"
           >
             + Add Customer
           </button>
-        }
-      >
-        {loading ? (
-          <div className="text-sm text-gray-400">Loading customers…</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="text-left text-gray-300">
-                <tr>
-                  <th className="px-3 py-2">Name</th>
-                  <th className="px-3 py-2">Contact</th>
-                  <th className="px-3 py-2">License</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2 w-28">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {rows.map((c) => (
-                  <tr key={c.id} className="hover:bg-zinc-900/40">
-                    <td className="px-3 py-2 font-medium">{c.name || "Unnamed"}</td>
-                    <td className="px-3 py-2">
-                      <div className="text-xs text-gray-300">{c.email}</div>
-                      <div className="text-xs text-gray-400">{c.phone}</div>
-                    </td>
-                    <td className="px-3 py-2">{c.license}</td>
-                    <td className="px-3 py-2">
-                      <Tag tone={c.status === "active" ? "green" : "amber"}>{c.status}</Tag>
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        onClick={() => openEdit(c)}
-                        className="px-2 py-1 text-xs rounded border border-zinc-600 hover:bg-zinc-800"
-                      >
-                        View / Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {rows.length === 0 && (
-                  <tr>
-                    <td colSpan="5" className="px-3 py-6 text-center text-gray-400">
-                      No customers yet. Click “Add Customer”.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="text-xs text-gray-500 mt-2">
-          (Edits are local only—mock. We’ll connect to the server later.)
-        </p>
-      </Card>
-
-      {show && draft && (
-        <CustomerModal draft={draft} setDraft={setDraft} onCancel={() => setShow(false)} onSave={save} />
-      )}
-    </div>
-  );
-}
-
-function CustomerModal({ draft, setDraft, onCancel, onSave }) {
-  const Field = ({ label, prop, type = "text", placeholder = "" }) => (
-    <label className="block">
-      <span className="text-xs text-gray-400">{label}</span>
-      <input
-        type={type}
-        value={draft[prop] ?? ""}
-        onChange={(e) => setDraft((d) => ({ ...d, [prop]: e.target.value }))}
-        placeholder={placeholder}
-        className="mt-1 w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm"
-      />
-    </label>
-  );
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-xl rounded-lg bg-zinc-900 border border-zinc-700">
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-          <div className="font-semibold">Customer Profile</div>
-          <button onClick={onCancel} className="text-gray-400 hover:text-gray-200 text-sm">✕</button>
-        </div>
-        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Name" prop="name" placeholder="Jane Doe" />
-          <Field label="Email" prop="email" placeholder="jane@example.com" />
-          <Field label="Phone" prop="phone" placeholder="(555) 123-4567" />
-          <Field label="Driver License" prop="license" placeholder="D1234567" />
-          <label className="block">
-            <span className="text-xs text-gray-400">Status</span>
-            <select
-              value={draft.status}
-              onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}
-              className="mt-1 w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1.5 text-sm"
-            >
-              <option value="active">active</option>
-              <option value="blocked">blocked</option>
-            </select>
-          </label>
-        </div>
-        <div className="px-4 py-3 border-t border-zinc-800 flex justify-end gap-2">
-          <button onClick={onCancel} className="px-3 py-1.5 text-sm rounded border border-zinc-600 hover:bg-zinc-800">Cancel</button>
-          <button onClick={onSave} className="px-3 py-1.5 text-sm rounded bg-emerald-600 text-white hover:bg-emerald-700">Save</button>
         </div>
       </div>
+
+      <div className="bg-[#0c0f14] rounded-md border border-[#23262d] overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-[#0e1218] text-gray-400">
+            <tr>
+              <th className="px-3 py-2 text-left">Name</th>
+              <th className="px-3 py-2 text-left">Phone</th>
+              <th className="px-3 py-2 text-left">Email</th>
+              <th className="px-3 py-2 text-left">DL #</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td className="px-3 py-4 text-gray-400" colSpan={4}>Loading…</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td className="px-3 py-4 text-gray-400" colSpan={4}>No customers yet.</td></tr>
+            ) : (
+              rows.map((c) => (
+                <tr
+                  key={c.id}
+                  className="border-t border-[#23262d] hover:bg-[#121723] cursor-pointer"
+                  onClick={() => onOpen(c)}
+                >
+                  <td className="px-3 py-2 text-gray-100">{c.name || "—"}</td>
+                  <td className="px-3 py-2 text-gray-200">{c.phone || "—"}</td>
+                  <td className="px-3 py-2 text-gray-200">{c.email || "—"}</td>
+                  <td className="px-3 py-2 text-gray-200">{c.dlNumber || "—"}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal
+        open={!!editing}
+        title="Customer Profile"
+        onClose={() => { setEditing(null); setDraft(null); }}
+        onSave={onSave}
+        saveLabel="Save Customer"
+      >
+        {draft && (
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-400 mb-1">Full Name</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.name ?? ""}
+                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Phone</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.phone ?? ""}
+                onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Email</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.email ?? ""}
+                onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+              />
+            </div>
+            <div className="col-span-2">
+              <label className="block text-xs text-gray-400 mb-1">Driver License #</label>
+              <input className="w-full bg-[#0a0e13] border border-[#2a2e36] rounded-md px-2 py-2 text-sm text-gray-100"
+                value={draft.dlNumber ?? ""}
+                onChange={(e) => setDraft({ ...draft, dlNumber: e.target.value })}
+              />
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
 
-// ================== DASHBOARD ==================
-function DashboardTab() {
+// ======= Dashboard (summary tiles) =======
+function DashboardHome() {
   const [stats, setStats] = useState(null);
+  const [live, setLive] = useState(false);
+
   useEffect(() => {
-    let cancel = false;
+    let mounted = true;
     (async () => {
       try {
-        const r = await fetch(`${API}/stats/summary`);
-        const d = await r.json();
-        if (!cancel) setStats(d);
-      } catch (e) {
-        console.error(e);
-      }
+        const h = await fetchJSON("/health");
+        if (mounted) setLive(!!h.ok);
+      } catch { setLive(false); }
+      try {
+        const s = await fetchJSON("/stats/summary");
+        if (mounted) setStats(s);
+      } catch { if (mounted) setStats(null); }
     })();
-    return () => { cancel = true; };
+    return () => (mounted = false);
   }, []);
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-      <Card title="Total Bookings">
-        <div className="text-2xl font-semibold">{stats?.bookingsTotal ?? "—"}</div>
-      </Card>
-      <Card title="Active Rentals">
-        <div className="text-2xl font-semibold">{stats?.activeRentals ?? "—"}</div>
-      </Card>
-      <Card title="Vehicles">
-        <div className="text-2xl font-semibold">{stats?.vehicles ?? "—"}</div>
-      </Card>
-      <Card title="Revenue">
-        <div className="text-2xl font-semibold">
-          {stats?.revenue != null ? `$${Number(stats.revenue).toLocaleString()}` : "—"}
-        </div>
-      </Card>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-gray-100">Dashboard</h2>
+        <Pill tone={live ? "green" : "red"}>{live ? "Live" : "Offline"}</Pill>
+      </div>
+      <div className="grid grid-cols-4 gap-4">
+        <StatCard label="Total Bookings" value={stats?.bookingsTotal} />
+        <StatCard label="Active Rentals" value={stats?.activeRentals} />
+        <StatCard label="Vehicles" value={stats?.vehicles} />
+        <StatCard label="Revenue" value={stats ? `$${(stats.revenue || 0).toLocaleString()}` : "—"} />
+      </div>
+      <p className="text-xs text-gray-500">
+        Data source: <code>VITE_API_URL</code> = {API_BASE || "(not set)"}.
+      </p>
     </div>
   );
 }
 
-// ================== APP SHELL ==================
+// ======= Main App with Tabs =======
 const TABS = ["Dashboard", "Calendar", "Bookings", "Customers", "Vehicles", "Team Chat", "Finances"];
 
 export default function App() {
-  const [active, setActive] = useState("Dashboard");
-  const [online, setOnline] = useState(false);
-
-  // light ping for status
-  useEffect(() => {
-    let canceled = false;
-    (async () => {
-      try {
-        const r = await fetch(`${API}/health`);
-        const d = await r.json();
-        if (!canceled) setOnline(!!d?.ok);
-      } catch {
-        if (!canceled) setOnline(false);
-      }
-    })();
-    return () => { canceled = true; };
-  }, []);
+  const [tab, setTab] = useState("Dashboard");
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <header className="sticky top-0 z-40 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-3 py-3 flex items-center gap-3">
-          <div className="text-emerald-400 font-semibold">K.V. Rentals</div>
-          <div className="text-gray-400">Team Dashboard</div>
-          <div className="ml-auto">
-            {online ? <Tag tone="green">Live</Tag> : <Tag tone="red">Offline</Tag>}
-          </div>
+    <div className="min-h-screen bg-[#0a0d12] text-gray-200">
+      <header className="bg-[#0b7a32] text-gray-100">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+          <div className="font-semibold">K.V. Rentals • Team Dashboard</div>
+          <div className="text-xs opacity-80">Live</div>
         </div>
-        <nav className="max-w-6xl mx-auto px-3 pb-3 flex gap-2 flex-wrap">
+      </header>
+
+      <div className="mx-auto max-w-6xl px-4 py-3">
+        {/* tabs */}
+        <div className="flex gap-2 mb-4">
           {TABS.map((t) => (
             <button
               key={t}
-              onClick={() => setActive(t)}
-              className={`px-3 py-1.5 rounded text-sm border ${
-                active === t
-                  ? "bg-emerald-600 text-white border-emerald-700"
-                  : "bg-zinc-900 border-zinc-800 hover:bg-zinc-800"
+              onClick={() => setTab(t)}
+              className={`px-3 py-2 text-xs rounded-md border ${
+                tab === t
+                  ? "bg-[#121826] border-[#1f2533] text-gray-100"
+                  : "bg-[#0e131b] border-[#1c212b] text-gray-300 hover:bg-[#121826]"
               }`}
             >
               {t}
             </button>
           ))}
-        </nav>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-3 py-4 space-y-4">
-        {active === "Dashboard" && <DashboardTab />}
-        {active === "Calendar" && <Card title="Calendar">Calendar view coming next.</Card>}
-        {active === "Bookings" && <Card title="Bookings">Bookings board coming next.</Card>}
-        {active === "Customers" && <CustomersTab />}
-        {active === "Vehicles" && <VehiclesTab />}
-        {active === "Team Chat" && <Card title="Team Chat">Chat placeholder.</Card>}
-        {active === "Finances" && <Card title="Finances">Finance KPIs coming next.</Card>}
-
-        <div className="text-xs text-gray-500 pt-4">
-          Data source: <code>VITE_API_URL</code> → {API || "(not set)"}
         </div>
-      </main>
+
+        {/* content */}
+        {tab === "Dashboard" && <DashboardHome />}
+        {tab === "Vehicles" && <VehiclesTab />}
+        {tab === "Customers" && <CustomersTab />}
+        {tab === "Calendar" && (
+          <div className="bg-[#0c0f14] rounded-md border border-[#23262d] p-6 text-sm text-gray-400">
+            Calendar view coming next.
+          </div>
+        )}
+        {tab === "Bookings" && (
+          <div className="bg-[#0c0f14] rounded-md border border-[#23262d] p-6 text-sm text-gray-400">
+            Bookings table & contract flow coming soon.
+          </div>
+        )}
+        {tab === "Team Chat" && (
+          <div className="bg-[#0c0f14] rounded-md border border-[#23262d] p-6 text-sm text-gray-400">
+            Team chat placeholder.
+          </div>
+        )}
+        {tab === "Finances" && (
+          <div className="bg-[#0c0f14] rounded-md border border-[#23262d] p-6 text-sm text-gray-400">
+            Finances charts coming soon.
+          </div>
+        )}
+      </div>
     </div>
   );
 }
