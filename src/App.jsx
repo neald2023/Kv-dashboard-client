@@ -488,53 +488,221 @@ const Vehicles = () => {
   );
 };
 
-  /* ------- Customers ------- */
-  const Customers = () => (
+/* -------- Vehicles -------- */
+const Vehicles = () => {
+  const [vehicles, setVehicles] = React.useState([]);
+  const [vehEdit, setVehEdit] = React.useState(null); // object being edited or created
+
+  // load list once
+  React.useEffect(() => {
+    (async () => {
+      try {
+        const list = await get("/vehicles");
+        setVehicles(Array.isArray(list) ? list : []);
+      } catch (e) {
+        console.error("Failed to fetch vehicles", e);
+        setVehicles([]);
+      }
+    })();
+  }, []);
+
+  // create a blank vehicle then open editor
+  function addVehicle() {
+    setVehEdit({
+      id: undefined,
+      year: "",
+      make: "",
+      model: "",
+      vin: "",
+      color: "",
+      plate: "",
+      currentOdometer: "",
+      status: "available",
+    });
+  }
+
+  // keep clicks on rows from opening while modal is open
+  const openIfNoModal = (v) => {
+    if (vehEdit) return;
+    setVehEdit({ ...v }); // clone so we don’t edit table row by reference
+  };
+
+  // Save handler (tries API, always updates the UI)
+  async function saveVehicle() {
+    // sanitize odometer: only digits
+    let odo = `${vehEdit.currentOdometer ?? ""}`.replace(/\D/g, "");
+    const cleaned = { ...vehEdit, currentOdometer: odo === "" ? 0 : Number(odo) };
+
+    try {
+      if (cleaned.id) {
+        // update existing
+        try { await put(`/vehicles/${cleaned.id}`, cleaned); } catch {}
+        setVehicles((prev) => prev.map((v) => (v.id === cleaned.id ? cleaned : v)));
+      } else {
+        // create new
+        let created = null;
+        try { created = await post("/vehicles", cleaned); } catch {}
+        const newId = created?.id || `tmp_${Date.now()}`;
+        setVehicles((prev) => [{ ...cleaned, id: newId }, ...prev]);
+      }
+    } finally {
+      setVehEdit(null);
+    }
+  }
+
+  // Delete handler
+  async function deleteVehicle(id, e) {
+    e?.stopPropagation?.();
+    try { await del(`/vehicles/${id}`); } catch {}
+    setVehicles((prev) => prev.filter((v) => v.id !== id));
+  }
+
+  return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Customers</h2>
-        <button className="btn" onClick={()=>setCustEdit({})}>+ Add Customer</button>
-      </div>
-      <div className="table w-full">
-        <div className="thead grid grid-cols-5">
-          <div>Name</div><div>Email</div><div>Phone</div><div>License #</div><div>Insurance</div>
-        </div>
-        {customers.map(c=>(
-          <div key={c.id} className="trow grid grid-cols-5" onClick={()=>setCustEdit(c)}>
-            <div>{c.name}</div><div>{c.email}</div><div>{c.phone}</div><div>{c.licenseNumber}</div>
-            <div>{c.insurance?.carrier||"-"}</div>
-          </div>
-        ))}
-        {!customers.length && <div className="px-3 py-6 opacity-60">No customers yet.</div>}
+        <h2 className="text-xl font-semibold">Vehicles</h2>
+        <button className="btn" onClick={addVehicle}>+ Add Vehicle</button>
       </div>
 
-      <Modal open={!!custEdit} onClose={()=>setCustEdit(null)} title={custEdit?.id?"Edit Customer":"Add Customer"}
-        footer={<>
-          <button className="btn ghost" onClick={()=>setCustEdit(null)}>Cancel</button>
-          <button className="btn" onClick={async ()=>{
-            const saved = await send(`/customers/${custEdit.id||"new"}`, custEdit.id?"PUT":"POST", custEdit);
-            setCustomers(await get("/customers"));
-            setCustEdit(null);
-          }}>Save Customer</button>
-        </>}>
-        {custEdit && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Inp placeholder="Full Name" value={custEdit.name||""} onChange={e=>setCustEdit({...custEdit,name:e.target.value})}/>
-            <Inp placeholder="Email" value={custEdit.email||""} onChange={e=>setCustEdit({...custEdit,email:e.target.value})}/>
-            <Inp placeholder="Phone" value={custEdit.phone||""} onChange={e=>setCustEdit({...custEdit,phone:e.target.value})}/>
-            <Inp placeholder="Address" value={custEdit.address||""} onChange={e=>setCustEdit({...custEdit,address:e.target.value})}/>
-            <Inp placeholder="Driver License #" value={custEdit.licenseNumber||""} onChange={e=>setCustEdit({...custEdit,licenseNumber:e.target.value})}/>
-            <Inp placeholder="Insurance Carrier" value={custEdit.insurance?.carrier||""}
-                 onChange={e=>setCustEdit({...custEdit,insurance:{...(custEdit.insurance||{}),carrier:e.target.value}})}/>
-            <Inp placeholder="Policy Number" value={custEdit.insurance?.policyNumber||""}
-                 onChange={e=>setCustEdit({...custEdit,insurance:{...(custEdit.insurance||{}),policyNumber:e.target.value}})}/>
-            <Inp placeholder="Insurance Expiration (YYYY-MM-DD)" value={custEdit.insurance?.expiresAt||""}
-                 onChange={e=>setCustEdit({...custEdit,insurance:{...(custEdit.insurance||{}),expiresAt:e.target.value}})}/>
+      {/* list */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left border-b border-slate-700">
+              <th className="py-2 pr-4">Vehicle</th>
+              <th className="py-2 pr-4">Plate</th>
+              <th className="py-2 pr-4">Odometer</th>
+              <th className="py-2 pr-4">Status</th>
+              <th className="py-2 pr-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vehicles.map((v) => (
+              <tr
+                key={v.id}
+                className="border-b border-slate-800 hover:bg-slate-800/40 cursor-pointer"
+                onClick={() => openIfNoModal(v)}
+              >
+                <td className="py-2 pr-4 whitespace-nowrap">
+                  {v.year ? `${v.year} ` : ""}
+                  {v.make || ""} {v.model || ""}
+                </td>
+                <td className="py-2 pr-4">{v.plate || "-"}</td>
+                <td className="py-2 pr-4">{v.currentOdometer ?? 0}</td>
+                <td className="py-2 pr-4">
+                  <span
+                    className={
+                      "tag " +
+                      (v.status === "available"
+                        ? "bg-green-600/30 text-green-300"
+                        : v.status === "out"
+                        ? "bg-yellow-600/30 text-yellow-200"
+                        : "bg-sky-600/30 text-sky-200")
+                    }
+                  >
+                    {v.status || "—"}
+                  </span>
+                </td>
+                <td className="py-2 pr-2 text-right">
+                  <button
+                    className="btn-xs mr-2"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openIfNoModal(v);
+                    }}
+                    title="Edit"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    className="btn-xs"
+                    onClick={(e) => deleteVehicle(v.id, e)}
+                    title="Delete"
+                  >
+                    🗑️
+                  </button>
+                </td>
+              </tr>
+            ))}
+
+            {vehicles.length === 0 && (
+              <tr>
+                <td className="py-6 text-slate-400" colSpan={5}>
+                  No vehicles yet. Click <b>+ Add Vehicle</b> to create one.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* edit/create modal */}
+      <Modal
+        open={!!vehEdit}
+        onClose={() => setVehEdit(null)}
+        title={vehEdit?.id ? "Edit Vehicle" : "Add Vehicle"}
+      >
+        {vehEdit && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3" onClick={(e)=>e.stopPropagation()}>
+            <Inp
+              placeholder="Year"
+              value={vehEdit.year ?? ""}
+              onChange={(e) => setVehEdit((x) => ({ ...x, year: e.target.value }))}
+            />
+            <Inp
+              placeholder="Make"
+              value={vehEdit.make ?? ""}
+              onChange={(e) => setVehEdit((x) => ({ ...x, make: e.target.value }))}
+            />
+            <Inp
+              placeholder="Model"
+              value={vehEdit.model ?? ""}
+              onChange={(e) => setVehEdit((x) => ({ ...x, model: e.target.value }))}
+            />
+            <Inp
+              placeholder="VIN"
+              value={vehEdit.vin ?? ""}
+              onChange={(e) => setVehEdit((x) => ({ ...x, vin: e.target.value }))}
+            />
+            <Inp
+              placeholder="Color"
+              value={vehEdit.color ?? ""}
+              onChange={(e) => setVehEdit((x) => ({ ...x, color: e.target.value }))}
+            />
+            <Inp
+              placeholder="License Plate"
+              value={vehEdit.plate ?? ""}
+              onChange={(e) => setVehEdit((x) => ({ ...x, plate: e.target.value }))}
+            />
+            <Inp
+              placeholder="Odometer"
+              inputMode="numeric"
+              pattern="\d*"
+              value={vehEdit.currentOdometer === 0 ? "0" : (vehEdit.currentOdometer ?? "")}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, "");
+                setVehEdit((x) => ({ ...x, currentOdometer: digits === "" ? "" : Number(digits) }));
+              }}
+            />
+            <Sel
+              value={vehEdit.status ?? "available"}
+              onChange={(e) => setVehEdit((x) => ({ ...x, status: e.target.value }))}
+            >
+              <option value="available">available</option>
+              <option value="out">out</option>
+              <option value="service">service</option>
+            </Sel>
+
+            <div className="col-span-full flex justify-end gap-2 mt-2">
+              <button className="btn" onClick={() => setVehEdit(null)}>Cancel</button>
+              <button className="btn btn-primary" onClick={saveVehicle}>Save Vehicle</button>
+            </div>
           </div>
         )}
       </Modal>
     </div>
   );
+};
 
   /* ------- Bookings ------- */
   const Bookings = () => {
