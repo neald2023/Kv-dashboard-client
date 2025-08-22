@@ -1,531 +1,442 @@
-import React, { useEffect, useState } from "react";
-import "./index.css";
+import React, { useEffect, useMemo, useState } from "react";
 
-// 🔌 Your server base URL (set on Vercel as VITE_API_URL)
-const API = import.meta.env.VITE_API_URL;
+/* ========= config ========= */
+const API_URL = import.meta.env.VITE_API_URL; // e.g. https://kv-dashboard-server.onrender.com
+const TABS = ["Dashboard","Calendar","Bookings","Customers","Vehicles","Team Chat","Finances"];
 
-// ---------------- Shared small UI bits ----------------
-const Button = ({ children, ...props }) => (
-  <button
-    className="px-3 py-2 rounded bg-emerald-600 hover:bg-emerald-700 text-white text-sm"
-    {...props}
-  >
+/* ========= tiny UI helpers ========= */
+const Box = ({ children, style }) => (
+  <div style={{ background:"#12151a", border:"1px solid #262c34", borderRadius:10, padding:14, ...style }}>
     {children}
-  </button>
+  </div>
 );
-
-const Secondary = ({ children, ...props }) => (
-  <button
-    className="px-3 py-2 rounded bg-zinc-700 hover:bg-zinc-600 text-white text-sm"
-    {...props}
-  >
-    {children}
-  </button>
-);
-
-const Tag = ({ color = "zinc", children }) => (
-  <span
-    className={`inline-block px-2 py-0.5 rounded text-xs bg-${color}-800/40 border border-${color}-700 text-${color}-100`}
-  >
-    {children}
-  </span>
-);
-
-// ---------------- Vehicles Modal ----------------
-function VehicleModal({ open, initial, onClose, onSaved }) {
-  const [form, setForm] = useState(() => ({
-    id: "",
-    year: "",
-    make: "",
-    model: "",
-    vin: "",
-    color: "",
-    plate: "",
-    currentOdometer: "",
-    status: "available",
-  }));
-
-  useEffect(() => {
-    if (open) {
-      setForm({
-        id: initial?.id || "",
-        year: initial?.year ?? "",
-        make: initial?.make ?? "",
-        model: initial?.model ?? "",
-        vin: initial?.vin ?? "",
-        color: initial?.color ?? "",
-        plate: initial?.plate ?? "",
-        // keep as string so you can delete leading zero
-        currentOdometer:
-          initial?.currentOdometer !== undefined
-            ? String(initial.currentOdometer)
-            : "",
-        status: initial?.status ?? "available",
-      });
-    }
-  }, [open, initial]);
-
-  if (!open) return null;
-
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-
-  const save = async () => {
-    const payload = {
-      ...form,
-      year: form.year ? Number(form.year) : undefined,
-      currentOdometer:
-        form.currentOdometer === "" ? 0 : Number(form.currentOdometer),
-    };
-
-    const isNew = !form.id;
-    const url = isNew ? `${API}/vehicles` : `${API}/vehicles/${form.id}`;
-    const method = isNew ? "POST" : "PUT";
-
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await res.json();
-    onSaved(data);
-    onClose();
-  };
-
+const Pill = ({ tone="gray", children }) => {
+  const bg = tone==="green"?"#14532d":tone==="red"?"#7f1d1d":tone==="blue"?"#1e3a8a":tone==="yellow"?"#854d0e":"#374151";
+  return <span style={{background:bg,color:"#fff",borderRadius:999,padding:"4px 10px",fontSize:12}}>{children}</span>;
+};
+const Button = ({children,onClick,tone="default",type="button",disabled})=>{
+  const bg = tone==="primary"?"#22c55e":tone==="danger"?"#ef4444":"#374151";
+  const hover = tone==="primary"?"#16a34a":tone==="danger"?"#dc2626":"#4b5563";
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="w-full max-w-2xl rounded-lg bg-zinc-900 border border-zinc-700 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">
-            {form.id ? "Edit Vehicle" : "Add Vehicle"}
-          </h3>
-          <button onClick={onClose} className="text-zinc-300">✕</button>
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm">
-            <div className="mb-1">Year</div>
-            <input
-              className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1"
-              value={form.year}
-              onChange={set("year")}
-              inputMode="numeric"
-              placeholder="2022"
-            />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Make</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.make} onChange={set("make")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Model</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.model} onChange={set("model")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">VIN</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.vin} onChange={set("vin")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Color</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.color} onChange={set("color")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">License Plate</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.plate} onChange={set("plate")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Odometer</div>
-            <input
-              className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1"
-              value={form.currentOdometer}
-              onChange={set("currentOdometer")}
-              inputMode="numeric"
-              placeholder="41250"
-            />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Status</div>
-            <select
-              className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1"
-              value={form.status}
-              onChange={set("status")}
-            >
-              <option value="available">available</option>
-              <option value="out">out</option>
-              <option value="service">service</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="flex gap-2 justify-end pt-2">
-          <Secondary onClick={onClose}>Cancel</Secondary>
-          <Button onClick={save}>Save Vehicle</Button>
-        </div>
+    <button type={type} disabled={disabled} onClick={onClick}
+      style={{background:disabled? "#37415180":bg,color:"#fff",border:"none",borderRadius:8,padding:"8px 12px",cursor:disabled?"not-allowed":"pointer"}}
+      onMouseOver={(e)=>e.currentTarget.style.background=disabled?"#37415180":hover}
+      onMouseOut={(e)=>e.currentTarget.style.background=disabled?"#37415180":bg}>
+      {children}
+    </button>
+  );
+};
+const Row = ({label,children})=>(
+  <div style={{display:"grid",gridTemplateColumns:"160px 1fr",gap:10,marginBottom:10}}>
+    <div style={{opacity:.8}}>{label}</div><div>{children}</div>
+  </div>
+);
+const Input = ({value,onChange,type="text",placeholder})=>(
+  <input value={value} type={type} placeholder={placeholder}
+    onChange={(e)=>onChange(e.target.value)}
+    style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #262c34",background:"#0b0e12",color:"#fff"}}/>
+);
+const Select = ({value,onChange,options})=>(
+  <select value={value} onChange={(e)=>onChange(e.target.value)}
+    style={{width:"100%",padding:"10px 12px",borderRadius:8,border:"1px solid #262c34",background:"#0b0e12",color:"#fff"}}>
+    {options.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+  </select>
+);
+const Modal = ({title,onClose,children,footer})=>(
+  <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:16}}>
+    <div onClick={(e)=>e.stopPropagation()} style={{width:"min(900px,95vw)",background:"#0f1318",border:"1px solid #2a313a",borderRadius:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"14px 16px",borderBottom:"1px solid #2a313a"}}>
+        <h3 style={{margin:0}}>{title}</h3>
+        <button onClick={onClose} style={{background:"transparent",color:"#9aa3af",border:"none",fontSize:18,cursor:"pointer"}}>×</button>
       </div>
+      <div style={{padding:16}}>{children}</div>
+      {footer && <div style={{padding:16,borderTop:"1px solid #2a313a",display:"flex",gap:8,justifyContent:"flex-end"}}>{footer}</div>}
+    </div>
+  </div>
+);
+
+/* ========= data helpers ========= */
+async function getJSON(path){ const r=await fetch(`${API_URL}${path}`); if(!r.ok) throw new Error(path); return r.json(); }
+const usePing = ()=> {
+  const [online,setOnline]=useState(false);
+  useEffect(()=>{
+    let cancel=false;
+    async function ping(){
+      try{ const j=await getJSON("/health"); if(!cancel) setOnline(!!j.ok); }
+      catch{ if(!cancel) setOnline(false); }
+    }
+    ping(); const id=setInterval(ping,15000); return ()=>{cancel=true; clearInterval(id);};
+  },[]);
+  return online;
+};
+
+/* ========= header + tabs ========= */
+function Header({online}) {
+  return (
+    <div style={{padding:"10px 14px",borderBottom:"1px solid #262c34",display:"flex",alignItems:"center",gap:12,background:"#12151a",position:"sticky",top:0,zIndex:10}}>
+      <div style={{fontWeight:700}}>K.V. Rentals • Team Dashboard</div>
+      <div style={{marginLeft:"auto"}}>{online ? <Pill tone="green">Live</Pill> : <Pill tone="red">Offline</Pill>}</div>
+    </div>
+  );
+}
+function Tabs({activeTab,setActiveTab}){
+  return (
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",padding:"12px 14px"}}>
+      {TABS.map(t=>(
+        <button key={t} onClick={()=>setActiveTab(t)}
+          style={{background: activeTab===t? "#22c55e":"#1f2937", color:"#fff",border:"1px solid #2a313a",borderRadius:8,padding:"8px 12px",cursor:"pointer"}}>
+          {t}
+        </button>
+      ))}
     </div>
   );
 }
 
-// ---------------- Customers Modal ----------------
-function CustomerModal({ open, initial, onClose, onSaved }) {
-  const [form, setForm] = useState(() => ({
-    id: "",
-    name: "",
-    phone: "",
-    email: "",
-    licenseNumber: "",
-    insurance: { carrier: "", policyNumber: "", expiresAt: "" },
-    documents: { driverLicenseUrl: "", insuranceCardUrl: "" },
-  }));
-
-  useEffect(() => {
-    if (open) {
-      setForm({
-        id: initial?.id || "",
-        name: initial?.name ?? "",
-        phone: initial?.phone ?? "",
-        email: initial?.email ?? "",
-        licenseNumber: initial?.licenseNumber ?? "",
-        insurance: {
-          carrier: initial?.insurance?.carrier ?? "",
-          policyNumber: initial?.insurance?.policyNumber ?? "",
-          expiresAt: initial?.insurance?.expiresAt ?? "",
-        },
-        documents: {
-          driverLicenseUrl: initial?.documents?.driverLicenseUrl ?? "",
-          insuranceCardUrl: initial?.documents?.insuranceCardUrl ?? "",
-        },
-      });
-    }
-  }, [open, initial]);
-
-  if (!open) return null;
-
-  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
-  const setIns = (k) => (e) =>
-    setForm((f) => ({ ...f, insurance: { ...f.insurance, [k]: e.target.value } }));
-  const setDocs = (k) => (e) =>
-    setForm((f) => ({ ...f, documents: { ...f.documents, [k]: e.target.value } }));
-
-  const save = async () => {
-    const isNew = !form.id;
-    const url = isNew ? `${API}/customers` : `${API}/customers/${form.id}`;
-    const method = isNew ? "POST" : "PUT";
-
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    onSaved(data);
-    onClose();
-  };
-
+/* ========= dashboard ========= */
+const Tile = ({label,value})=>(
+  <Box style={{textAlign:"center"}}>
+    <div style={{opacity:.8,marginBottom:6}}>{label}</div>
+    <div style={{fontSize:22,fontWeight:700}}>{value}</div>
+  </Box>
+);
+function Dashboard({summary}) {
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="w-full max-w-3xl rounded-lg bg-zinc-900 border border-zinc-700 p-4 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">
-            {form.id ? "Edit Customer" : "Add Customer"}
-          </h3>
-          <button onClick={onClose} className="text-zinc-300">✕</button>
+    <div style={{padding:"0 14px 14px"}}>
+      <Box>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:12}}>
+          <Tile label="Total Bookings" value={summary?.bookingsTotal ?? "—"} />
+          <Tile label="Active Rentals" value={summary?.activeRentals ?? "—"} />
+          <Tile label="Vehicles" value={summary?.vehicles ?? "—"} />
+          <Tile label="Revenue" value={summary?.revenue ? `$${summary.revenue.toLocaleString()}` : "—"} />
         </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <label className="text-sm">
-            <div className="mb-1">Full Name</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.name} onChange={set("name")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Phone</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.phone} onChange={set("phone")} placeholder="+1 555-123-4567" />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Email</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.email} onChange={set("email")} />
-          </label>
-          <label className="text-sm">
-            <div className="mb-1">Driver License #</div>
-            <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.licenseNumber} onChange={set("licenseNumber")} />
-          </label>
-
-          <div className="col-span-2 mt-2 border-t border-zinc-700 pt-3">
-            <div className="font-medium mb-2">Insurance</div>
-            <div className="grid grid-cols-3 gap-3">
-              <label className="text-sm">
-                <div className="mb-1">Carrier</div>
-                <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.insurance.carrier} onChange={setIns("carrier")} />
-              </label>
-              <label className="text-sm">
-                <div className="mb-1">Policy #</div>
-                <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.insurance.policyNumber} onChange={setIns("policyNumber")} />
-              </label>
-              <label className="text-sm">
-                <div className="mb-1">Expires</div>
-                <input type="date" className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.insurance.expiresAt} onChange={setIns("expiresAt")} />
-              </label>
-            </div>
-          </div>
-
-          <div className="col-span-2 mt-2 border-t border-zinc-700 pt-3">
-            <div className="font-medium mb-2">Documents (URLs for now)</div>
-            <div className="grid grid-cols-2 gap-3">
-              <label className="text-sm">
-                <div className="mb-1">Driver License Photo URL</div>
-                <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.documents.driverLicenseUrl} onChange={setDocs("driverLicenseUrl")} placeholder="https://..." />
-              </label>
-              <label className="text-sm">
-                <div className="mb-1">Insurance Card Photo URL</div>
-                <input className="w-full rounded bg-zinc-800 border border-zinc-700 px-2 py-1" value={form.documents.insuranceCardUrl} onChange={setDocs("insuranceCardUrl")} placeholder="https://..." />
-              </label>
-            </div>
-          </div>
+        <div style={{fontSize:12,opacity:.7,marginTop:10}}>
+          Data source: <code>VITE_API_URL</code> → {API_URL}
         </div>
-
-        <div className="flex gap-2 justify-end pt-2">
-          <Secondary onClick={onClose}>Cancel</Secondary>
-          <Button onClick={save}>Save Customer</Button>
-        </div>
-      </div>
+      </Box>
     </div>
   );
 }
 
-// ---------------- Main App ----------------
-const TABS = ["Dashboard", "Vehicles", "Customers"];
-
-export default function App() {
-  const [tab, setTab] = useState("Dashboard");
-  const [online, setOnline] = useState(false);
-
-  // Vehicles state
-  const [vehicles, setVehicles] = useState([]);
-  const [vehOpen, setVehOpen] = useState(false);
-  const [vehEditing, setVehEditing] = useState(null);
-
-  // Customers state
-  const [customers, setCustomers] = useState([]);
-  const [cusOpen, setCusOpen] = useState(false);
-  const [cusEditing, setCusEditing] = useState(null);
-
-  // Ping server & load data when tab opens
-  useEffect(() => {
-    const ping = async () => {
-      try {
-        const r = await fetch(`${API}/health`);
-        setOnline(r.ok);
-      } catch {
-        setOnline(false);
+/* ========= calendar ========= */
+const dayKey = (d)=> d.toISOString().slice(0,10);
+function Calendar({bookings}) {
+  // normalize events per day
+  const perDay = useMemo(()=>{
+    const m = {};
+    (bookings||[]).forEach(b=>{
+      const start = new Date(b.startDate);
+      const end = new Date(b.endDate);
+      const sKey = dayKey(start), eKey = dayKey(end);
+      m[sKey] = m[sKey] || {pickup:0, return:0, ongoing:0};
+      m[eKey] = m[eKey] || {pickup:0, return:0, ongoing:0};
+      m[sKey].pickup++; m[eKey].return++;
+      // mark ongoing days between
+      let cur = new Date(start);
+      cur.setDate(cur.getDate()+1);
+      while(cur <= end){
+        const k = dayKey(cur);
+        m[k] = m[k] || {pickup:0, return:0, ongoing:0};
+        m[k].ongoing++; cur.setDate(cur.getDate()+1);
       }
-    };
-    ping();
-  }, []);
-
-  useEffect(() => {
-    const loadVehicles = async () => {
-      const r = await fetch(`${API}/vehicles`);
-      setVehicles(await r.json());
-    };
-    const loadCustomers = async () => {
-      const r = await fetch(`${API}/customers`);
-      setCustomers(await r.json());
-    };
-
-    if (tab === "Vehicles") loadVehicles();
-    if (tab === "Customers") loadCustomers();
-  }, [tab]);
-
-  // helpers for tags
-  const statusColor = (s) =>
-    s === "available" ? "emerald" : s === "out" ? "yellow" : "orange";
-
-  // save handlers (update local list optimistically)
-  const onVehicleSaved = (v) => {
-    setVehicles((list) => {
-      const i = list.findIndex((x) => x.id === v.id);
-      if (i === -1) return [v, ...list];
-      const copy = [...list];
-      copy[i] = v;
-      return copy;
     });
-  };
+    return m;
+  },[bookings]);
 
-  const onCustomerSaved = (c) => {
-    setCustomers((list) => {
-      const i = list.findIndex((x) => x.id === c.id);
-      if (i === -1) return [c, ...list];
-      const copy = [...list];
-      copy[i] = c;
-      return copy;
-    });
-  };
+  const [cursor,setCursor]=useState(()=> new Date());
+  const y = cursor.getFullYear(), mo = cursor.getMonth(); // 0..11
+  const first = new Date(y,mo,1);
+  const startDay = first.getDay(); // 0=Sun
+  const daysInMonth = new Date(y,mo+1,0).getDate();
+
+  const cells = [];
+  for(let i=0;i<startDay;i++) cells.push(null);
+  for(let d=1; d<=daysInMonth; d++) cells.push(new Date(y,mo,d));
+
+  const prev = ()=> setCursor(new Date(y,mo-1,1));
+  const next = ()=> setCursor(new Date(y,mo+1,1));
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="border-b border-zinc-800 bg-zinc-900/60 backdrop-blur">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          <div className="font-semibold">K.V. Rentals • Team Dashboard</div>
-          <div className="ml-auto flex items-center gap-1">
-            <Tag color={online ? "emerald" : "rose"}>
-              {online ? "Live" : "Offline"}
-            </Tag>
+    <div style={{padding:"0 14px 14px"}}>
+      <Box>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <Button onClick={prev}>←</Button>
+            <h3 style={{margin:0}}>{cursor.toLocaleString(undefined,{month:"long"})} {y}</h3>
+            <Button onClick={next}>→</Button>
+          </div>
+          <div style={{display:"flex",gap:10}}>
+            <Pill tone="green">Pickup</Pill>
+            <Pill tone="red">Returns</Pill>
+            <Pill tone="blue">Ongoing</Pill>
           </div>
         </div>
-        <div className="max-w-6xl mx-auto px-4 pb-3 flex gap-2">
-          {TABS.map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-1.5 rounded ${
-                tab === t ? "bg-emerald-700 text-white" : "bg-zinc-800"
-              }`}
-            >
-              {t}
-            </button>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8,marginBottom:8,opacity:.8}}>
+          {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d} style={{textAlign:"center"}}>{d}</div>)}
+        </div>
+
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8}}>
+          {cells.map((date,idx)=>(
+            <div key={idx} style={{height:92, border:"1px solid #262c34",borderRadius:10,padding:8, background:"#0f1318"}}>
+              {date && (
+                <>
+                  <div style={{opacity:.8,marginBottom:6}}>{date.getDate()}</div>
+                  {(()=>{ 
+                    const k = dayKey(date);
+                    const e = perDay[k];
+                    if(!e) return null;
+                    return (
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {e.pickup>0 && <Dot tone="green" text={e.pickup}/>}
+                        {e.return>0 && <Dot tone="red" text={e.return}/>}
+                        {e.ongoing>0 && <Dot tone="blue" text={e.ongoing}/>}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
           ))}
         </div>
+      </Box>
+    </div>
+  );
+}
+const Dot = ({tone,text})=>{
+  const color = tone==="green"?"#22c55e":tone==="red"?"#ef4444":"#60a5fa";
+  return (
+    <span style={{display:"inline-flex",alignItems:"center",gap:6,background:"#111827",border:"1px solid #1f2937",borderRadius:999,padding:"2px 8px",fontSize:12}}>
+      <span style={{width:8,height:8,borderRadius:999,background:color}}/>
+      {text}
+    </span>
+  );
+};
+
+/* ========= Vehicles ========= */
+function Vehicles({items,setItems}) {
+  const [modal,setModal]=useState(null);
+  const addNew = ()=> setModal({ id:`veh_${Date.now()}`, year:"", make:"", model:"", vin:"", color:"", plate:"", odometer:"", status:"available" });
+  const save = (v)=>{ setItems(prev=>{ const next = prev.some(x=>x.id===v.id)? prev.map(x=>x.id===v.id?v:x) : [v,...prev]; localStorage.setItem("kv_vehicles",JSON.stringify(next)); return next; }); setModal(null); };
+  const remove = (id)=>{ setItems(prev=>{ const next = prev.filter(x=>x.id!==id); localStorage.setItem("kv_vehicles",JSON.stringify(next)); return next; }); setModal(null); };
+
+  return (
+    <div style={{padding:"0 14px 14px"}}>
+      <Box>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+          <h3 style={{margin:0}}>Vehicles</h3>
+          <Button tone="primary" onClick={addNew}>+ Add Vehicle</Button>
+        </div>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr style={{textAlign:"left",opacity:.8}}>
+              <th style={{padding:"8px 6px"}}>Year</th>
+              <th style={{padding:"8px 6px"}}>Make</th>
+              <th style={{padding:"8px 6px"}}>Model</th>
+              <th style={{padding:"8px 6px"}}>Plate</th>
+              <th style={{padding:"8px 6px"}}>Odometer</th>
+              <th style={{padding:"8px 6px"}}>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(v=>(
+              <tr key={v.id} onClick={()=>setModal(v)} style={{cursor:"pointer",borderTop:"1px solid #262c34"}}>
+                <td style={{padding:"10px 6px"}}>{v.year||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{v.make||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{v.model||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{v.plate||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{v.odometer||0}</td>
+                <td style={{padding:"10px 6px"}}><Pill tone={v.status==="available"?"green":v.status==="out"?"yellow":"red"}>{v.status||"—"}</Pill></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+
+      {modal && (
+        <VehicleModal value={modal} onCancel={()=>setModal(null)} onSave={save} onDelete={()=>remove(modal.id)} />
+      )}
+    </div>
+  );
+}
+function VehicleModal({value,onCancel,onSave,onDelete}){
+  const [v,setV]=useState({...value});
+  const set = (k,val)=>setV(s=>({...s,[k]:val}));
+  return (
+    <Modal title="Vehicle Profile" onClose={onCancel} footer={
+      <>
+        {value?.id && <Button tone="danger" onClick={onDelete}>Delete</Button>}
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button tone="primary" onClick={()=>onSave(v)}>Save Vehicle</Button>
+      </>
+    }>
+      <Row label="Year"><Input value={v.year} onChange={(x)=>set("year",x.replace(/\D/g,""))} /></Row>
+      <Row label="Make"><Input value={v.make} onChange={(x)=>set("make",x)} /></Row>
+      <Row label="Model"><Input value={v.model} onChange={(x)=>set("model",x)} /></Row>
+      <Row label="VIN"><Input value={v.vin} onChange={(x)=>set("vin",x)} /></Row>
+      <Row label="Color"><Input value={v.color} onChange={(x)=>set("color",x)} /></Row>
+      <Row label="License Plate"><Input value={v.plate} onChange={(x)=>set("plate",x)} /></Row>
+      <Row label="Odometer">
+        <Input value={String(v.odometer ?? "")} onChange={(x)=>set("odometer", x.replace(/[^\d]/g,""))} />
+      </Row>
+      <Row label="Status">
+        <Select value={v.status} onChange={(x)=>set("status",x)} options={[
+          {value:"available",label:"available"},
+          {value:"out",label:"out"},
+          {value:"maintenance",label:"maintenance"},
+        ]}/>
+      </Row>
+    </Modal>
+  );
+}
+
+/* ========= Customers ========= */
+function Customers({items,setItems}){
+  const [modal,setModal]=useState(null);
+  const addNew=()=>setModal({ id:`cus_${Date.now()}`, name:"", email:"", phone:"", licenseNumber:"", address:"", insurance:{company:"",policy:"",expiry:""}, licensePhotoUrl:"" });
+  const save=(c)=>{ setItems(prev=>{ const next= prev.some(x=>x.id===c.id)? prev.map(x=>x.id===c.id?c:x) : [c,...prev]; localStorage.setItem("kv_customers",JSON.stringify(next)); return next;}); setModal(null); };
+  const remove=(id)=>{ setItems(prev=>{ const next= prev.filter(x=>x.id!==id); localStorage.setItem("kv_customers",JSON.stringify(next)); return next;}); setModal(null); };
+
+  return (
+    <div style={{padding:"0 14px 14px"}}>
+      <Box>
+        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
+          <h3 style={{margin:0}}>Customers</h3>
+          <Button tone="primary" onClick={addNew}>+ Add Customer</Button>
+        </div>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr style={{textAlign:"left",opacity:.8}}>
+              <th style={{padding:"8px 6px"}}>Name</th>
+              <th style={{padding:"8px 6px"}}>Email</th>
+              <th style={{padding:"8px 6px"}}>Phone</th>
+              <th style={{padding:"8px 6px"}}>License #</th>
+              <th style={{padding:"8px 6px"}}>Insurance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map(c=>(
+              <tr key={c.id} onClick={()=>setModal(c)} style={{cursor:"pointer",borderTop:"1px solid #262c34"}}>
+                <td style={{padding:"10px 6px"}}>{c.name||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{c.email||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{c.phone||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{c.licenseNumber||"—"}</td>
+                <td style={{padding:"10px 6px"}}>{c.insurance?.company || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+
+      {modal && (
+        <CustomerModal value={modal} onCancel={()=>setModal(null)} onSave={save} onDelete={()=>remove(modal.id)} />
+      )}
+    </div>
+  );
+}
+function CustomerModal({value,onCancel,onSave,onDelete}){
+  const [c,setC]=useState({...value});
+  const set=(k,val)=>setC(s=>({...s,[k]:val}));
+  const setIns=(k,val)=>setC(s=>({...s,insurance:{...(s.insurance||{}),[k]:val}}));
+  return (
+    <Modal title="Customer Profile" onClose={onCancel} footer={
+      <>
+        {value?.id && <Button tone="danger" onClick={onDelete}>Delete</Button>}
+        <Button onClick={onCancel}>Cancel</Button>
+        <Button tone="primary" onClick={()=>onSave(c)}>Save Customer</Button>
+      </>
+    }>
+      <Row label="Full Name"><Input value={c.name} onChange={(x)=>set("name",x)} /></Row>
+      <Row label="Email"><Input value={c.email} onChange={(x)=>set("email",x)} /></Row>
+      <Row label="Phone"><Input value={c.phone} onChange={(x)=>set("phone",x.replace(/[^\d\-()+\s]/g,""))} /></Row>
+      <Row label="Address"><Input value={c.address} onChange={(x)=>set("address",x)} /></Row>
+      <Row label="License #"><Input value={c.licenseNumber} onChange={(x)=>set("licenseNumber",x)} /></Row>
+
+      <h4 style={{marginTop:18}}>Insurance</h4>
+      <Row label="Company"><Input value={c.insurance?.company||""} onChange={(x)=>setIns("company",x)} /></Row>
+      <Row label="Policy #"><Input value={c.insurance?.policy||""} onChange={(x)=>setIns("policy",x)} /></Row>
+      <Row label="Expiry (YYYY-MM-DD)"><Input value={c.insurance?.expiry||""} onChange={(x)=>setIns("expiry",x)} /></Row>
+
+      <h4 style={{marginTop:18}}>Driver’s License Photo</h4>
+      <Row label="Image URL"><Input value={c.licensePhotoUrl||""} onChange={(x)=>set("licensePhotoUrl",x)} /></Row>
+      {c.licensePhotoUrl && (
+        <div style={{marginTop:8}}>
+          <img src={c.licensePhotoUrl} alt="DL" style={{maxWidth:"100%",borderRadius:8,border:"1px solid #2a313a"}}/>
+        </div>
+      )}
+      <div style={{opacity:.7,fontSize:12,marginTop:8}}>
+        (Uploads will be wired to cloud storage later; for now paste an image URL to preview & save locally.)
       </div>
+    </Modal>
+  );
+}
 
-      <div className="max-w-6xl mx-auto p-4">
-        {tab === "Dashboard" && (
-          <div className="text-zinc-300">
-            <p className="mb-2">Welcome back! Use the tabs to manage data.</p>
-            <p className="text-sm opacity-70">
-              Data source: <code>VITE_API_URL</code> → {API || "(not set)"}
-            </p>
-          </div>
-        )}
+/* ========= Bookings (placeholder) ========= */
+function Bookings({bookings}) {
+  return (
+    <div style={{padding:"0 14px 14px"}}>
+      <Box>
+        <h3 style={{marginTop:0}}>Bookings (read-only mock)</h3>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr style={{textAlign:"left",opacity:.8}}>
+            <th style={{padding:"8px 6px"}}>Customer</th>
+            <th style={{padding:"8px 6px"}}>Vehicle</th>
+            <th style={{padding:"8px 6px"}}>Pickup</th>
+            <th style={{padding:"8px 6px"}}>Return</th>
+          </tr></thead>
+          <tbody>
+            {(bookings||[]).map(b=>(
+              <tr key={b.id} style={{borderTop:"1px solid #262c34"}}>
+                <td style={{padding:"10px 6px"}}>{b.customerName}</td>
+                <td style={{padding:"10px 6px"}}>{b.vehicleName || b.plate}</td>
+                <td style={{padding:"10px 6px"}}>{new Date(b.startDate).toLocaleDateString()}</td>
+                <td style={{padding:"10px 6px"}}>{new Date(b.endDate).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Box>
+    </div>
+  );
+}
 
-        {tab === "Vehicles" && (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Vehicles</h2>
-              <Button
-                onClick={() => {
-                  setVehEditing(null);
-                  setVehOpen(true);
-                }}
-              >
-                + Add Vehicle
-              </Button>
-            </div>
-            <div className="overflow-x-auto border border-zinc-800 rounded">
-              <table className="w-full text-sm">
-                <thead className="bg-zinc-900">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Vehicle</th>
-                    <th className="px-3 py-2 text-left">Plate</th>
-                    <th className="px-3 py-2 text-left">Odometer</th>
-                    <th className="px-3 py-2 text-left">Status</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vehicles.map((v) => (
-                    <tr key={v.id} className="border-t border-zinc-800">
-                      <td className="px-3 py-2">
-                        {v.year} {v.make} {v.model}
-                      </td>
-                      <td className="px-3 py-2">{v.plate}</td>
-                      <td className="px-3 py-2">{v.currentOdometer?.toLocaleString?.() ?? v.currentOdometer}</td>
-                      <td className="px-3 py-2">
-                        <Tag color={statusColor(v.status)}>{v.status}</Tag>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <Secondary
-                          onClick={() => {
-                            setVehEditing(v);
-                            setVehOpen(true);
-                          }}
-                        >
-                          Edit
-                        </Secondary>
-                      </td>
-                    </tr>
-                  ))}
-                  {vehicles.length === 0 && (
-                    <tr>
-                      <td className="px-3 py-6 text-center text-zinc-400" colSpan={5}>
-                        No vehicles yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+/* ========= Team Chat / Finances placeholders ========= */
+const Placeholder = ({title,children})=>(
+  <div style={{padding:"0 14px 14px"}}><Box><h3 style={{marginTop:0}}>{title}</h3><div>{children}</div></Box></div>
+);
 
-            <VehicleModal
-              open={vehOpen}
-              initial={vehEditing}
-              onClose={() => setVehOpen(false)}
-              onSaved={onVehicleSaved}
-            />
-          </>
-        )}
+/* ========= Root App ========= */
+export default function App(){
+  const online = usePing();
+  const [activeTab,setActiveTab]=useState("Dashboard");
 
-        {tab === "Customers" && (
-          <>
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">Customers</h2>
-              <Button
-                onClick={() => {
-                  setCusEditing(null);
-                  setCusOpen(true);
-                }}
-              >
-                + Add Customer
-              </Button>
-            </div>
-            <div className="overflow-x-auto border border-zinc-800 rounded">
-              <table className="w-full text-sm">
-                <thead className="bg-zinc-900">
-                  <tr>
-                    <th className="px-3 py-2 text-left">Name</th>
-                    <th className="px-3 py-2 text-left">Phone</th>
-                    <th className="px-3 py-2 text-left">Email</th>
-                    <th className="px-3 py-2 text-left">License #</th>
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {customers.map((c) => (
-                    <tr key={c.id} className="border-t border-zinc-800">
-                      <td className="px-3 py-2">{c.name}</td>
-                      <td className="px-3 py-2">{c.phone}</td>
-                      <td className="px-3 py-2">{c.email}</td>
-                      <td className="px-3 py-2">{c.licenseNumber}</td>
-                      <td className="px-3 py-2 text-right">
-                        <Secondary
-                          onClick={() => {
-                            setCusEditing(c);
-                            setCusOpen(true);
-                          }}
-                        >
-                          Profile
-                        </Secondary>
-                      </td>
-                    </tr>
-                  ))}
-                  {customers.length === 0 && (
-                    <tr>
-                      <td className="px-3 py-6 text-center text-zinc-400" colSpan={5}>
-                        No customers yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+  const [summary,setSummary]=useState(null);
+  const [vehicles,setVehicles]=useState(()=> JSON.parse(localStorage.getItem("kv_vehicles")||"[]"));
+  const [customers,setCustomers]=useState(()=> JSON.parse(localStorage.getItem("kv_customers")||"[]"));
+  const [bookings,setBookings]=useState([]);
 
-            <CustomerModal
-              open={cusOpen}
-              initial={cusEditing}
-              onClose={() => setCusOpen(false)}
-              onSaved={onCustomerSaved}
-            />
-          </>
-        )}
-      </div>
+  useEffect(()=>{
+    async function load(){
+      try{ setSummary(await getJSON("/stats/summary")); } catch{}
+      try{ const vs=await getJSON("/vehicles"); if(vehicles.length===0){ setVehicles(vs); localStorage.setItem("kv_vehicles",JSON.stringify(vs)); } } catch{}
+      try{ const cs=await getJSON("/customers"); if(customers.length===0){ setCustomers(cs); localStorage.setItem("kv_customers",JSON.stringify(cs)); } } catch{}
+      try{ setBookings(await getJSON("/bookings")); } catch{}
+    }
+    load();
+  },[]); // load once
+
+  return (
+    <div style={{color:"#e5e7eb", background:"#0b0e12", minHeight:"100vh", fontFamily:"system-ui, -apple-system, Segoe UI, Roboto, sans-serif"}}>
+      <Header online={online}/>
+      <Tabs activeTab={activeTab} setActiveTab={setActiveTab}/>
+      {activeTab==="Dashboard" && <Dashboard summary={summary}/>}
+      {activeTab==="Calendar" && <Calendar bookings={bookings}/>}
+      {activeTab==="Bookings" && <Bookings bookings={bookings}/>}
+      {activeTab==="Customers" && <Customers items={customers} setItems={setCustomers}/>}
+      {activeTab==="Vehicles" && <Vehicles items={vehicles} setItems={setVehicles}/>}
+      {activeTab==="Team Chat" && <Placeholder title="Team Chat">Lightweight team chat and notifications will go here.</Placeholder>}
+      {activeTab==="Finances" && <Placeholder title="Finances">Reports, payouts, and expense tracking coming soon.</Placeholder>}
+
+      <div style={{opacity:.6,fontSize:12,textAlign:"center",padding:"10px 0 30px"}}>© 2025 KV Rentals</div>
     </div>
   );
 }
