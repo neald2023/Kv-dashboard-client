@@ -118,71 +118,159 @@ export default function App() {
     </div>
   );
 
-  /* ------- Calendar (simple live view) ------- */
-  const Calendar = () => {
-    const today = new Date();
-    const [cursor,setCursor]=useState(new Date(today.getFullYear(), today.getMonth(), 1));
-    const y = cursor.getFullYear(), m = cursor.getMonth();
-    const firstDow = new Date(y,m,1).getDay();              // 0..6
-    const daysInMonth = new Date(y,m+1,0).getDate();        // number of days
-    const cells = [];
-    for (let i=0;i<firstDow;i++) cells.push(null);
-    for (let d=1; d<=daysInMonth; d++) cells.push(new Date(y,m,d));
 
-    // Mark pickups/returns from bookings
-    const marks = new Map(); // key 'YYYY-MM-DD' -> {pickup:boolean, return:boolean}
-    const fmt = (dt)=>dt.toISOString().slice(0,10);
-    bookings.forEach(b=>{
-      const s=new Date(b.start), e=new Date(b.end);
-      const ks=fmt(s), ke=fmt(e);
-      marks.set(ks,{...(marks.get(ks)||{}), pickup:true});
-      marks.set(ke,{...(marks.get(ke)||{}), return:true});
-    });
+ /* ------- Calendar (live view with hover tooltips) ------- */
+const Calendar = () => {
+  // base dates
+  const today = new Date();
+  const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const y = cursor.getFullYear(), m = cursor.getMonth();
 
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Calendar</h2>
-          <div className="flex gap-2">
-            <button className="btn" onClick={()=>setCursor(new Date(y,m-1,1))}>← Prev</button>
-            <div className="px-3 py-1 bg-slate-800 rounded">{cursor.toLocaleString(undefined,{month:"long", year:"numeric"})}</div>
-            <button className="btn" onClick={()=>setCursor(new Date(y,m+1,1))}>Next →</button>
+  // build all day cells for current month
+  const firstDow = new Date(y, m, 1).getDay();          // 0..6
+  const daysInMonth = new Date(y, m + 1, 0).getDate();  // count
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(new Date(y, m, d));
+
+  // ---- markers (pickup / return / ongoing) from bookings ----
+  const fmt = (dt) => dt.toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Map<string, {pickup: Booking[], return: Booking[], ongoing: Booking[]}>
+  const marks = new Map();
+  bookings.forEach((b) => {
+    const s = new Date(b.start);
+    const e = new Date(b.end);
+
+    // ensure buckets exist
+    const ensure = (key) => {
+      if (!marks.has(key)) marks.set(key, { pickup: [], return: [], ongoing: [] });
+      return marks.get(key);
+    };
+
+    // pickup + return for exact days
+    ensure(fmt(s)).pickup.push(b);
+    ensure(fmt(e)).return.push(b);
+
+    // ongoing: mark all days strictly between start and end
+    // (protect against inverted ranges)
+    const start = s < e ? s : e;
+    const end = s < e ? e : s;
+    let walk = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 1);
+    while (walk < new Date(end.getFullYear(), end.getMonth(), end.getDate())) {
+      ensure(fmt(walk)).ongoing.push(b);
+      walk.setDate(walk.getDate() + 1);
+    }
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Calendar</h2>
+        <div className="flex gap-2">
+          <button className="btn" onClick={() => setCursor(new Date(y, m - 1, 1))}>
+            ‹ Prev
+          </button>
+          <div className="px-3 py-1 rounded bg-slate-800">
+            {cursor.toLocaleString(undefined, { month: "long", year: "numeric" })}
           </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-1 text-center text-xs opacity-70">
-          {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d}>{d}</div>)}
-        </div>
-        <div className="grid grid-cols-7 gap-1">
-          {cells.map((dt,idx)=>(
-            <div key={idx} className="h-24 border border-slate-700 rounded p-1 text-xs relative">
-              {dt && (
-                <>
-                  <div className="opacity-70">{dt.getDate()}</div>
-                  {/* markers */}
-                  {(()=>{
-                    const k = fmt(dt);
-                    const m = marks.get(k);
-                    return (
-                      <div className="absolute bottom-1 left-1 right-1 flex gap-1 justify-center">
-                        {m?.pickup && <span className="h-2 w-2 rounded-full bg-green-400" title="Pickup" />}
-                        {m?.return && <span className="h-2 w-2 rounded-full bg-red-400" title="Return" />}
-                      </div>
-                    );
-                  })()}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div className="flex items-center gap-3 text-xs">
-          <div className="h-2 w-2 rounded-full bg-green-400" /> Pickup
-          <div className="h-2 w-2 rounded-full bg-red-400" /> Return
+          <button className="btn" onClick={() => setCursor(new Date(y, m + 1, 1))}>
+            Next ›
+          </button>
         </div>
       </div>
-    );
-  };
+
+      <div className="grid grid-cols-7 gap-1 text-xs opacity-70">
+        {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map((d) => (
+          <div key={d} className="text-center py-1">{d}</div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((dt, idx) => {
+          const k = dt ? fmt(dt) : null;
+          const mm = k ? (marks.get(k) ?? { pickup: [], return: [], ongoing: [] }) : null;
+          const day = dt?.getDate();
+
+          return (
+            <div
+              key={idx}
+              className={`h-24 border border-slate-700 rounded p-1 relative ${
+                dt ? "" : "bg-slate-900/30"
+              }`}
+            >
+              {dt && (
+                <div className="opacity-70 text-right text-[10px]">{day}</div>
+              )}
+
+              {/* Dots */}
+              {dt && (
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-1 flex gap-1">
+                  {mm?.pickup.length > 0 && (
+                    <div className="h-2 w-2 rounded-full bg-green-400 group relative">
+                      {/* tooltip */}
+                      <div className="hidden group-hover:block absolute bottom-3 left-1/2 -translate-x-1/2 z-10 w-56 p-2 rounded bg-slate-800 shadow-lg border border-slate-700">
+                        <div className="text-[10px] uppercase tracking-wide text-green-300">Pickup</div>
+                        {mm.pickup.map((b, i) => (
+                          <div key={i} className="mt-1 text-xs">
+                            <div className="font-medium">{b.customerName ?? b.customer ?? "Customer"}</div>
+                            <div className="opacity-70">{b.vehicleName ?? b.vehicle ?? "Vehicle"}</div>
+                            <div className="opacity-50">{new Date(b.start).toLocaleString()}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {mm?.return.length > 0 && (
+                    <div className="h-2 w-2 rounded-full bg-red-400 group relative">
+                      <div className="hidden group-hover:block absolute bottom-3 left-1/2 -translate-x-1/2 z-10 w-56 p-2 rounded bg-slate-800 shadow-lg border border-slate-700">
+                        <div className="text-[10px] uppercase tracking-wide text-red-300">Return</div>
+                        {mm.return.map((b, i) => (
+                          <div key={i} className="mt-1 text-xs">
+                            <div className="font-medium">{b.customerName ?? b.customer ?? "Customer"}</div>
+                            <div className="opacity-70">{b.vehicleName ?? b.vehicle ?? "Vehicle"}</div>
+                            <div className="opacity-50">{new Date(b.end).toLocaleString()}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {mm?.ongoing.length > 0 && (
+                    <div className="h-2 w-2 rounded-full bg-blue-400 group relative">
+                      <div className="hidden group-hover:block absolute bottom-3 left-1/2 -translate-x-1/2 z-10 w-56 p-2 rounded bg-slate-800 shadow-lg border border-slate-700">
+                        <div className="text-[10px] uppercase tracking-wide text-blue-300">Ongoing</div>
+                        {mm.ongoing.slice(0, 3).map((b, i) => (
+                          <div key={i} className="mt-1 text-xs">
+                            <div className="font-medium">{b.customerName ?? b.customer ?? "Customer"}</div>
+                            <div className="opacity-70">{b.vehicleName ?? b.vehicle ?? "Vehicle"}</div>
+                            <div className="opacity-50">
+                              {new Date(b.start).toLocaleDateString()} → {new Date(b.end).toLocaleDateString()}
+                            </div>
+                          </div>
+                        ))}
+                        {mm.ongoing.length > 3 && (
+                          <div className="mt-1 text-xs opacity-60">+{mm.ongoing.length - 3} more…</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* legend */}
+      <div className="flex items-center gap-3 text-xs opacity-70">
+        <div className="h-2 w-2 rounded-full bg-green-400" /> Pickup
+        <div className="h-2 w-2 rounded-full bg-red-400" /> Return
+        <div className="h-2 w-2 rounded-full bg-blue-400" /> Ongoing
+      </div>
+    </div>
+  );
+};
+
 
   /* ------- Vehicles ------- */
   const Vehicles = () => (
