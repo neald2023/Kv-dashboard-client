@@ -2,68 +2,37 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./index.css";
 
-/** ====== API helper ====== */
-const API = import.meta.env.VITE_API_URL?.replace(/\/+$/, "") || "";
+/* ========== API HELPERS ========== */
+const API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
+const get  = async (p) => (await fetch(`${API}${p}`)).json();
+const send = async (p, m, body) =>
+  (await fetch(`${API}${p}`, { method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json();
 
-async function apiGet(path) {
-  const res = await fetch(`${API}${path}`, { credentials: "omit" });
-  if (!res.ok) throw new Error(`${path} → ${res.status}`);
-  return res.json();
-}
-async function apiSend(path, method, body) {
-  const res = await fetch(`${API}${path}`, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    credentials: "omit",
-  });
-  if (!res.ok) {
-    let msg = `${method} ${path} → ${res.status}`;
-    try {
-      const j = await res.json();
-      if (j?.error) msg += `\n${j.error}`;
-    } catch {}
-    throw new Error(msg);
-  }
-  return res.json();
-}
-
-/** ====== Small UI bits ====== */
-const Pill = ({ children, tone = "default" }) => (
-  <span
-    className={`inline-block px-2 py-0.5 rounded text-xs ${
-      tone === "ok"
-        ? "bg-green-700/30 text-green-200"
-        : tone === "warn"
-        ? "bg-yellow-700/30 text-yellow-100"
-        : tone === "bad"
-        ? "bg-red-700/30 text-red-100"
-        : "bg-slate-700/40 text-slate-200"
-    }`}
-  >
-    {children}
-  </span>
+/* ========== SMALL UI ========== */
+const Pill = ({ tone="default", children }) => {
+  const map = {
+    ok:"bg-green-700/30 text-green-200",
+    warn:"bg-yellow-700/30 text-yellow-100",
+    bad:"bg-red-700/30 text-red-100",
+    default:"bg-slate-700/40 text-slate-200"
+  };
+  return <span className={`px-2 py-0.5 rounded text-xs ${map[tone]}`}>{children}</span>;
+};
+const Tile = ({label,value})=>(
+  <div className="bg-slate-900 border border-slate-700 rounded p-4">
+    <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
+    <div className="text-2xl font-semibold mt-1">{value}</div>
+  </div>
 );
 
 function Modal({ open, onClose, title, children, footer }) {
   if (!open) return null;
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="bg-slate-900 border border-slate-700 rounded w-full max-w-3xl p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center" onClick={onClose}>
+      <div className="bg-slate-900 border border-slate-700 rounded w-full max-w-3xl p-5 shadow-xl" onClick={(e)=>e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <button
-            className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700"
-            onClick={onClose}
-          >
-            ✕
-          </button>
+          <button className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700" onClick={onClose}>✕</button>
         </div>
         {children}
         <div className="mt-4 flex gap-2 justify-end">{footer}</div>
@@ -71,748 +40,357 @@ function Modal({ open, onClose, title, children, footer }) {
     </div>
   );
 }
+const Inp = (p)=><input {...p} className={`inp ${p.className||""}`} />;
+const Sel = (p)=><select {...p} className={`inp ${p.className||""}`} />;
 
-/** ====== App ====== */
-export default function App() {
-  const [tab, setTab] = useState("dashboard");
-
-  // dashboard
-  const [summary, setSummary] = useState(null);
-  const [statusOk, setStatusOk] = useState(false);
-
-  // vehicles
-  const [vehicles, setVehicles] = useState([]);
-  const [vehOpen, setVehOpen] = useState(false);
-  const [vehForm, setVehForm] = useState(emptyVehicle());
-
-  // customers
-  const [customers, setCustomers] = useState([]);
-  const [custOpen, setCustOpen] = useState(false);
-  const [custForm, setCustForm] = useState(emptyCustomer());
-
-  // bookings
-  const [bookings, setBookings] = useState([]);
-  const [bookOpen, setBookOpen] = useState(false);
-  const [bookForm, setBookForm] = useState(emptyBooking());
-
-  const vehiclesById = useMemo(
-    () => Object.fromEntries(vehicles.map((v) => [v.id, v])),
-    [vehicles]
-  );
-  const customersById = useMemo(
-    () => Object.fromEntries(customers.map((c) => [c.id, c])),
-    [customers]
-  );
-
-  /** Loaders */
-  async function refreshHealthAndSummary() {
-    try {
-      const h = await apiGet("/health");
-      setStatusOk(!!h.ok);
-    } catch {
-      setStatusOk(false);
-    }
-    try {
-      const s = await apiGet("/stats/summary");
-      setSummary(s);
-    } catch {
-      setSummary(null);
-    }
-  }
-  async function refreshVehicles() {
-    setVehicles(await apiGet("/vehicles"));
-  }
-  async function refreshCustomers() {
-    setCustomers(await apiGet("/customers"));
-  }
-  async function refreshBookings() {
-    setBookings(await apiGet("/bookings"));
-  }
-
-  useEffect(() => {
-    refreshHealthAndSummary();
-    refreshVehicles();
-    refreshCustomers();
-    refreshBookings();
-  }, []);
-
-  /** Vehicle handlers */
-  function openNewVehicle() {
-    setVehForm(emptyVehicle());
-    setVehOpen(true);
-  }
-  function openEditVehicle(v) {
-    setVehForm({ ...v });
-    setVehOpen(true);
-  }
-  async function saveVehicle() {
-    try {
-      const body = {
-        year: Number(vehForm.year || 0),
-        make: (vehForm.make || "").trim(),
-        model: (vehForm.model || "").trim(),
-        vin: (vehForm.vin || "").trim(),
-        color: (vehForm.color || "").trim(),
-        plate: (vehForm.plate || "").trim(),
-        currentOdometer: Number(String(vehForm.currentOdometer || "0").replace(/^0+/, "") || 0),
-        status: vehForm.status || "available",
-      };
-      if (vehForm.id) {
-        await apiSend(`/vehicles/${vehForm.id}`, "PUT", body);
-      } else {
-        await apiSend(`/vehicles`, "POST", body);
-      }
-      setVehOpen(false);
-      await refreshVehicles();
-      await refreshHealthAndSummary();
-    } catch (e) {
-      alert(e.message);
-    }
-  }
-
-  /** Customer handlers */
-  function openNewCustomer() {
-    setCustForm(emptyCustomer());
-    setCustOpen(true);
-  }
-  function openEditCustomer(c) {
-    setCustForm({
-      ...c,
-      insurance: { ...(c.insurance || {}) },
-      documents: { ...(c.documents || {}) },
-    });
-    setCustOpen(true);
-  }
-  async function saveCustomer() {
-    try {
-      const body = {
-        name: (custForm.name || "").trim(),
-        email: (custForm.email || "").trim(),
-        phone: (custForm.phone || "").trim(),
-        licenseNumber: (custForm.licenseNumber || "").trim(),
-        address: (custForm.address || "").trim(),
-        insurance: {
-          carrier: (custForm.insurance?.carrier || "").trim(),
-          policyNumber: (custForm.insurance?.policyNumber || "").trim(),
-          expiresAt: (custForm.insurance?.expiresAt || "").trim(),
-        },
-        documents: {
-          driverLicenseUrl: (custForm.documents?.driverLicenseUrl || "").trim(),
-          insuranceCardUrl: (custForm.documents?.insuranceCardUrl || "").trim(),
-        },
-      };
-      if (custForm.id) {
-        await apiSend(`/customers/${custForm.id}`, "PUT", body);
-      } else {
-        await apiSend(`/customers`, "POST", body);
-      }
-      setCustOpen(false);
-      await refreshCustomers();
-    } catch (e) {
-      alert(e.message);
-    }
-  }
-
-  /** Booking handlers */
-  function openNewBooking() {
-    setBookForm(emptyBooking());
-    setBookOpen(true);
-  }
-  async function saveBooking() {
-    try {
-      const body = {
-        customerId: bookForm.customerId,
-        vehicleId: bookForm.vehicleId,
-        startDate: bookForm.startDate,
-        endDate: bookForm.endDate,
-        notes: bookForm.notes || "",
-        price: bookForm.price ? Number(bookForm.price) : undefined,
-      };
-      await apiSend(`/bookings`, "POST", body);
-      setBookOpen(false);
-      await refreshBookings();
-      await refreshVehicles();
-      await refreshHealthAndSummary();
-    } catch (e) {
-      alert(e.message);
-    }
-  }
-  async function updateBookingStatus(id, next) {
-    try {
-      await apiSend(`/bookings/${id}`, "PUT", { status: next });
-      await refreshBookings();
-      await refreshVehicles();
-      await refreshHealthAndSummary();
-    } catch (e) {
-      alert(e.message);
-    }
-  }
-
+/* Searchable dropdown */
+function SearchableSelect({ options, value, onChange, labelKey="label", valueKey="value", placeholder="Type to search..." }) {
+  const [q,setQ]=useState("");
+  const filtered = useMemo(()=>options.filter(o=>String(o[labelKey]).toLowerCase().includes(q.toLowerCase())),[options,q,labelKey]);
   return (
-    <div className="p-5 text-slate-200">
-      <header className="mb-4 flex items-center gap-3">
-        <h1 className="text-xl font-semibold">K.V. Rentals • Team Dashboard</h1>
-        <Pill tone={statusOk ? "ok" : "bad"}>{statusOk ? "Live" : "Offline"}</Pill>
-        <span className="ml-auto text-xs opacity-70">
-          Data source: <code>VITE_API_URL</code> → {API || "(not set)"}
-        </span>
-      </header>
-
-      {/* Tabs */}
-      <div className="flex gap-2 mb-4">
-        {["dashboard", "vehicles", "customers", "bookings"].map((t) => (
-          <button
-            key={t}
-            className={`px-3 py-1 rounded ${
-              tab === t ? "bg-green-700 text-white" : "bg-slate-800 hover:bg-slate-700"
-            }`}
-            onClick={() => setTab(t)}
-          >
-            {t[0].toUpperCase() + t.slice(1)}
+    <div className="flex flex-col gap-1">
+      <Inp placeholder={placeholder} value={q} onChange={e=>setQ(e.target.value)} />
+      <div className="max-h-40 overflow-auto border border-slate-700 rounded">
+        {filtered.map(o=>(
+          <button key={o[valueKey]}
+                  className={`w-full text-left px-3 py-2 hover:bg-slate-800 ${value===o[valueKey]?"bg-slate-800":""}`}
+                  onClick={()=>onChange(o[valueKey])}>
+            {o[labelKey]}
           </button>
         ))}
+        {!filtered.length && <div className="px-3 py-2 opacity-60">No matches</div>}
       </div>
-
-      {/* Dash */}
-      {tab === "dashboard" && (
-        <section className="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <Tile label="Total Bookings" value={summary?.bookingsTotal ?? "—"} />
-          <Tile label="Active Rentals" value={summary?.activeRentals ?? "—"} />
-          <Tile label="Vehicles" value={summary?.vehicles ?? "—"} />
-          <Tile
-            label="Revenue"
-            value={
-              typeof summary?.revenue === "number"
-                ? `$${summary.revenue.toLocaleString()}`
-                : "—"
-            }
-          />
-        </section>
-      )}
-
-      {/* Vehicles */}
-      {tab === "vehicles" && (
-        <section>
-          <div className="mb-2 flex justify-between items-center">
-            <h2 className="font-semibold">Vehicles</h2>
-            <button className="px-3 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={openNewVehicle}>
-              + Add Vehicle
-            </button>
-          </div>
-          <div className="overflow-auto border border-slate-700 rounded">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-800">
-                <tr>
-                  <Th>Vehicle</Th>
-                  <Th>Plate</Th>
-                  <Th>Odometer</Th>
-                  <Th>Status</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {vehicles.map((v) => (
-                  <tr
-                    key={v.id}
-                    className="hover:bg-slate-800 cursor-pointer"
-                    onClick={() => openEditVehicle(v)}
-                  >
-                    <Td>{v.name || `${v.year} ${v.make} ${v.model}`}</Td>
-                    <Td>{v.plate}</Td>
-                    <Td>{v.currentOdometer?.toLocaleString()}</Td>
-                    <Td>
-                      <Pill
-                        tone={
-                          v.status === "available" ? "ok" : v.status === "out" ? "warn" : "bad"
-                        }
-                      >
-                        {v.status}
-                      </Pill>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Modal
-            open={vehOpen}
-            onClose={() => setVehOpen(false)}
-            title={vehForm.id ? "Edit Vehicle" : "Add Vehicle"}
-            footer={[
-              <button key="cancel" className="px-3 py-1 bg-slate-800 rounded" onClick={() => setVehOpen(false)}>
-                Cancel
-              </button>,
-              <button key="save" className="px-3 py-1 bg-green-700 rounded" onClick={saveVehicle}>
-                Save Vehicle
-              </button>,
-            ]}
-          >
-            <TwoCol>
-              <Field label="Year">
-                <input
-                  className="inp"
-                  value={vehForm.year ?? ""}
-                  onChange={(e) => setVehForm({ ...vehForm, year: e.target.value })}
-                  inputMode="numeric"
-                />
-              </Field>
-              <Field label="Make">
-                <input
-                  className="inp"
-                  value={vehForm.make || ""}
-                  onChange={(e) => setVehForm({ ...vehForm, make: e.target.value })}
-                />
-              </Field>
-              <Field label="Model">
-                <input
-                  className="inp"
-                  value={vehForm.model || ""}
-                  onChange={(e) => setVehForm({ ...vehForm, model: e.target.value })}
-                />
-              </Field>
-              <Field label="VIN">
-                <input
-                  className="inp"
-                  value={vehForm.vin || ""}
-                  onChange={(e) => setVehForm({ ...vehForm, vin: e.target.value })}
-                />
-              </Field>
-              <Field label="Color">
-                <input
-                  className="inp"
-                  value={vehForm.color || ""}
-                  onChange={(e) => setVehForm({ ...vehForm, color: e.target.value })}
-                />
-              </Field>
-              <Field label="License Plate">
-                <input
-                  className="inp"
-                  value={vehForm.plate || ""}
-                  onChange={(e) => setVehForm({ ...vehForm, plate: e.target.value })}
-                />
-              </Field>
-              <Field label="Odometer">
-                <input
-                  className="inp"
-                  value={vehForm.currentOdometer ?? ""}
-                  onChange={(e) =>
-                    setVehForm({
-                      ...vehForm,
-                      currentOdometer: e.target.value.replace(/[^\d]/g, ""),
-                    })
-                  }
-                  inputMode="numeric"
-                />
-              </Field>
-              <Field label="Status">
-                <select
-                  className="inp"
-                  value={vehForm.status || "available"}
-                  onChange={(e) => setVehForm({ ...vehForm, status: e.target.value })}
-                >
-                  <option value="available">available</option>
-                  <option value="out">out</option>
-                  <option value="service">service</option>
-                </select>
-              </Field>
-            </TwoCol>
-          </Modal>
-        </section>
-      )}
-
-      {/* Customers */}
-      {tab === "customers" && (
-        <section>
-          <div className="mb-2 flex justify-between items-center">
-            <h2 className="font-semibold">Customers</h2>
-            <button className="px-3 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={openNewCustomer}>
-              + Add Customer
-            </button>
-          </div>
-          <div className="overflow-auto border border-slate-700 rounded">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-800">
-                <tr>
-                  <Th>Name</Th>
-                  <Th>Phone</Th>
-                  <Th>Email</Th>
-                  <Th>License</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {customers.map((c) => (
-                  <tr
-                    key={c.id}
-                    className="hover:bg-slate-800 cursor-pointer"
-                    onClick={() => openEditCustomer(c)}
-                  >
-                    <Td>{c.name}</Td>
-                    <Td>{c.phone}</Td>
-                    <Td>{c.email}</Td>
-                    <Td>{c.licenseNumber}</Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Modal
-            open={custOpen}
-            onClose={() => setCustOpen(false)}
-            title={custForm.id ? "Edit Customer" : "Add Customer"}
-            footer={[
-              <button key="cancel" className="px-3 py-1 bg-slate-800 rounded" onClick={() => setCustOpen(false)}>
-                Cancel
-              </button>,
-              <button key="save" className="px-3 py-1 bg-green-700 rounded" onClick={saveCustomer}>
-                Save Customer
-              </button>,
-            ]}
-          >
-            <TwoCol>
-              <Field label="Name">
-                <input
-                  className="inp"
-                  value={custForm.name || ""}
-                  onChange={(e) => setCustForm({ ...custForm, name: e.target.value })}
-                />
-              </Field>
-              <Field label="Phone">
-                <input
-                  className="inp"
-                  value={custForm.phone || ""}
-                  onChange={(e) => setCustForm({ ...custForm, phone: e.target.value })}
-                />
-              </Field>
-              <Field label="Email">
-                <input
-                  className="inp"
-                  value={custForm.email || ""}
-                  onChange={(e) => setCustForm({ ...custForm, email: e.target.value })}
-                />
-              </Field>
-              <Field label="Driver License #">
-                <input
-                  className="inp"
-                  value={custForm.licenseNumber || ""}
-                  onChange={(e) =>
-                    setCustForm({ ...custForm, licenseNumber: e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Address" full>
-                <input
-                  className="inp"
-                  value={custForm.address || ""}
-                  onChange={(e) => setCustForm({ ...custForm, address: e.target.value })}
-                />
-              </Field>
-
-              <div className="col-span-2 border-t border-slate-700 my-2" />
-
-              <Field label="Insurance Carrier">
-                <input
-                  className="inp"
-                  value={custForm.insurance?.carrier || ""}
-                  onChange={(e) =>
-                    setCustForm({
-                      ...custForm,
-                      insurance: { ...(custForm.insurance || {}), carrier: e.target.value },
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Policy #">
-                <input
-                  className="inp"
-                  value={custForm.insurance?.policyNumber || ""}
-                  onChange={(e) =>
-                    setCustForm({
-                      ...custForm,
-                      insurance: {
-                        ...(custForm.insurance || {}),
-                        policyNumber: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Policy Expiration">
-                <input
-                  className="inp"
-                  placeholder="YYYY-MM-DD"
-                  value={custForm.insurance?.expiresAt || ""}
-                  onChange={(e) =>
-                    setCustForm({
-                      ...custForm,
-                      insurance: { ...(custForm.insurance || {}), expiresAt: e.target.value },
-                    })
-                  }
-                />
-              </Field>
-
-              <div className="col-span-2 border-t border-slate-700 my-2" />
-
-              <Field label="Driver License Photo URL" full>
-                <input
-                  className="inp"
-                  value={custForm.documents?.driverLicenseUrl || ""}
-                  onChange={(e) =>
-                    setCustForm({
-                      ...custForm,
-                      documents: {
-                        ...(custForm.documents || {}),
-                        driverLicenseUrl: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </Field>
-              <Field label="Insurance Card Photo URL" full>
-                <input
-                  className="inp"
-                  value={custForm.documents?.insuranceCardUrl || ""}
-                  onChange={(e) =>
-                    setCustForm({
-                      ...custForm,
-                      documents: {
-                        ...(custForm.documents || {}),
-                        insuranceCardUrl: e.target.value,
-                      },
-                    })
-                  }
-                />
-              </Field>
-            </TwoCol>
-          </Modal>
-        </section>
-      )}
-
-      {/* Bookings */}
-      {tab === "bookings" && (
-        <section>
-          <div className="mb-2 flex justify-between items-center">
-            <h2 className="font-semibold">Bookings</h2>
-            <button className="px-3 py-1 rounded bg-blue-700 hover:bg-blue-600" onClick={openNewBooking}>
-              + New Booking
-            </button>
-          </div>
-
-          <div className="overflow-auto border border-slate-700 rounded">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-800">
-                <tr>
-                  <Th>Customer</Th>
-                  <Th>Vehicle</Th>
-                  <Th>Start</Th>
-                  <Th>End</Th>
-                  <Th>Status</Th>
-                  <Th>Actions</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {bookings.map((b) => (
-                  <tr key={b.id} className="hover:bg-slate-800">
-                    <Td>{customersById[b.customerId]?.name || b.customer || b.customerId}</Td>
-                    <Td>{vehiclesById[b.vehicleId]?.name || b.vehicle || b.vehicleId}</Td>
-                    <Td>{fmtDate(b.startDate)}</Td>
-                    <Td>{fmtDate(b.endDate)}</Td>
-                    <Td>
-                      <Pill
-                        tone={
-                          b.status === "active"
-                            ? "warn"
-                            : b.status === "completed"
-                            ? "ok"
-                            : "bad"
-                        }
-                      >
-                        {b.status}
-                      </Pill>
-                    </Td>
-                    <Td>
-                      <div className="flex gap-1">
-                        <button
-                          className="px-2 py-0.5 rounded bg-green-700/70"
-                          onClick={() => updateBookingStatus(b.id, "completed")}
-                          title="Complete"
-                        >
-                          ✓
-                        </button>
-                        <button
-                          className="px-2 py-0.5 rounded bg-yellow-700/70"
-                          onClick={() => updateBookingStatus(b.id, "active")}
-                          title="Mark Active"
-                        >
-                          ▶
-                        </button>
-                        <button
-                          className="px-2 py-0.5 rounded bg-red-700/70"
-                          onClick={() => updateBookingStatus(b.id, "canceled")}
-                          title="Cancel"
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Modal
-            open={bookOpen}
-            onClose={() => setBookOpen(false)}
-            title="New Booking"
-            footer={[
-              <button key="cancel" className="px-3 py-1 bg-slate-800 rounded" onClick={() => setBookOpen(false)}>
-                Cancel
-              </button>,
-              <button key="save" className="px-3 py-1 bg-green-700 rounded" onClick={saveBooking}>
-                Save Booking
-              </button>,
-            ]}
-          >
-            <TwoCol>
-              <Field label="Customer">
-                <select
-                  className="inp"
-                  value={bookForm.customerId}
-                  onChange={(e) => setBookForm({ ...bookForm, customerId: e.target.value })}
-                >
-                  <option value="">Select…</option>
-                  {customers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} — {c.phone}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Vehicle">
-                <select
-                  className="inp"
-                  value={bookForm.vehicleId}
-                  onChange={(e) => setBookForm({ ...bookForm, vehicleId: e.target.value })}
-                >
-                  <option value="">Select…</option>
-                  {vehicles.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.name} — {v.plate} ({v.status})
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Start (ISO)">
-                <input
-                  className="inp"
-                  placeholder="2025-08-22T10:00:00Z"
-                  value={bookForm.startDate}
-                  onChange={(e) => setBookForm({ ...bookForm, startDate: e.target.value })}
-                />
-              </Field>
-              <Field label="End (ISO)">
-                <input
-                  className="inp"
-                  placeholder="2025-08-23T16:00:00Z"
-                  value={bookForm.endDate}
-                  onChange={(e) => setBookForm({ ...bookForm, endDate: e.target.value })}
-                />
-              </Field>
-              <Field label="Price (optional)">
-                <input
-                  className="inp"
-                  inputMode="decimal"
-                  value={bookForm.price ?? ""}
-                  onChange={(e) => setBookForm({ ...bookForm, price: e.target.value.replace(/[^\d.]/g, "") })}
-                />
-              </Field>
-              <Field label="Notes" full>
-                <textarea
-                  className="inp"
-                  rows={3}
-                  value={bookForm.notes || ""}
-                  onChange={(e) => setBookForm({ ...bookForm, notes: e.target.value })}
-                />
-              </Field>
-            </TwoCol>
-          </Modal>
-        </section>
-      )}
     </div>
   );
 }
 
-/** ====== helpers / little components ====== */
-function emptyVehicle() {
-  return {
-    id: "",
-    year: "",
-    make: "",
-    model: "",
-    vin: "",
-    color: "",
-    plate: "",
-    currentOdometer: "",
-    status: "available",
-  };
-}
-function emptyCustomer() {
-  return {
-    id: "",
-    name: "",
-    email: "",
-    phone: "",
-    licenseNumber: "",
-    address: "",
-    insurance: { carrier: "", policyNumber: "", expiresAt: "" },
-    documents: { driverLicenseUrl: "", insuranceCardUrl: "" },
-  };
-}
-function emptyBooking() {
-  return {
-    customerId: "",
-    vehicleId: "",
-    startDate: "",
-    endDate: "",
-    notes: "",
-    price: "",
-  };
-}
-function fmtDate(s) {
-  if (!s) return "—";
-  try {
-    const d = new Date(s);
-    if (isNaN(d)) return s;
-    return d.toLocaleString();
-  } catch {
-    return s;
-  }
-}
+/* ========== MAIN APP ========== */
+const TABS = ["Dashboard","Calendar","Bookings","Customers","Vehicles","Team Chat","Finances"];
 
-const Th = ({ children }) => (
-  <th className="text-left px-3 py-2 border-b border-slate-700/70">{children}</th>
-);
-const Td = ({ children }) => (
-  <td className="px-3 py-2 border-b border-slate-800/60 align-top">{children}</td>
-);
-const Tile = ({ label, value }) => (
-  <div className="bg-slate-900 border border-slate-700 rounded p-4">
-    <div className="text-xs uppercase tracking-wide opacity-70">{label}</div>
-    <div className="text-2xl font-semibold mt-1">{value}</div>
-  </div>
-);
-function Field({ label, children, full }) {
+export default function App() {
+  const [tab,setTab]=useState("Dashboard");
+  const [online,setOnline]=useState(false);
+  const [summary,setSummary]=useState({bookingsTotal:0,activeRentals:0,vehicles:0,revenue:0});
+
+  const [vehicles,setVehicles]=useState([]);
+  const [customers,setCustomers]=useState([]);
+  const [bookings,setBookings]=useState([]);
+
+  // Modals
+  const [vehEdit,setVehEdit]=useState(null);
+  const [custEdit,setCustEdit]=useState(null);
+  const [newBookingOpen,setNewBookingOpen]=useState(false);
+  const [bookingDraft,setBookingDraft]=useState({customerId:"", vehicleId:"", start:"", end:""});
+
+  /* Load everything */
+  useEffect(()=>{
+    (async()=>{
+      try {
+        const h = await get("/health");
+        setOnline(Boolean(h.ok));
+      } catch { setOnline(false); }
+      try { setSummary(await get("/stats/summary")); } catch {}
+      try { setVehicles(await get("/vehicles")); } catch {}
+      try { setCustomers(await get("/customers")); } catch {}
+      try { setBookings(await get("/bookings")); } catch {}
+    })();
+  },[]);
+
+  /* Helpers */
+  const statusPill = online ? <Pill tone="ok">Live</Pill> : <Pill tone="bad">Offline</Pill>;
+
+  /* ------- Dashboard ------- */
+  const Dashboard = () => (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">K.V. Rentals • Team Dashboard</h2>
+        {statusPill}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <Tile label="Total Bookings" value={summary.bookingsTotal ?? bookings.length} />
+        <Tile label="Active Rentals" value={summary.activeRentals ?? 0} />
+        <Tile label="Vehicles" value={summary.vehicles ?? vehicles.length} />
+        <Tile label="Revenue" value={`$${(summary.revenue ?? 0).toLocaleString()}`} />
+      </div>
+      <div className="text-xs opacity-60">
+        Data source: <code>VITE_API_URL → {API || "(not set)"}</code>
+      </div>
+    </div>
+  );
+
+  /* ------- Calendar (simple live view) ------- */
+  const Calendar = () => {
+    const today = new Date();
+    const [cursor,setCursor]=useState(new Date(today.getFullYear(), today.getMonth(), 1));
+    const y = cursor.getFullYear(), m = cursor.getMonth();
+    const firstDow = new Date(y,m,1).getDay();              // 0..6
+    const daysInMonth = new Date(y,m+1,0).getDate();        // number of days
+    const cells = [];
+    for (let i=0;i<firstDow;i++) cells.push(null);
+    for (let d=1; d<=daysInMonth; d++) cells.push(new Date(y,m,d));
+
+    // Mark pickups/returns from bookings
+    const marks = new Map(); // key 'YYYY-MM-DD' -> {pickup:boolean, return:boolean}
+    const fmt = (dt)=>dt.toISOString().slice(0,10);
+    bookings.forEach(b=>{
+      const s=new Date(b.start), e=new Date(b.end);
+      const ks=fmt(s), ke=fmt(e);
+      marks.set(ks,{...(marks.get(ks)||{}), pickup:true});
+      marks.set(ke,{...(marks.get(ke)||{}), return:true});
+    });
+
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Calendar</h2>
+          <div className="flex gap-2">
+            <button className="btn" onClick={()=>setCursor(new Date(y,m-1,1))}>← Prev</button>
+            <div className="px-3 py-1 bg-slate-800 rounded">{cursor.toLocaleString(undefined,{month:"long", year:"numeric"})}</div>
+            <button className="btn" onClick={()=>setCursor(new Date(y,m+1,1))}>Next →</button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 text-center text-xs opacity-70">
+          {["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].map(d=><div key={d}>{d}</div>)}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {cells.map((dt,idx)=>(
+            <div key={idx} className="h-24 border border-slate-700 rounded p-1 text-xs relative">
+              {dt && (
+                <>
+                  <div className="opacity-70">{dt.getDate()}</div>
+                  {/* markers */}
+                  {(()=>{
+                    const k = fmt(dt);
+                    const m = marks.get(k);
+                    return (
+                      <div className="absolute bottom-1 left-1 right-1 flex gap-1 justify-center">
+                        {m?.pickup && <span className="h-2 w-2 rounded-full bg-green-400" title="Pickup" />}
+                        {m?.return && <span className="h-2 w-2 rounded-full bg-red-400" title="Return" />}
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex items-center gap-3 text-xs">
+          <div className="h-2 w-2 rounded-full bg-green-400" /> Pickup
+          <div className="h-2 w-2 rounded-full bg-red-400" /> Return
+        </div>
+      </div>
+    );
+  };
+
+  /* ------- Vehicles ------- */
+  const Vehicles = () => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Vehicles</h2>
+        <button className="btn" onClick={()=>setVehEdit({})}>+ Add Vehicle</button>
+      </div>
+      <div className="table w-full">
+        <div className="thead grid grid-cols-6">
+          <div>Year</div><div>Make</div><div>Model</div><div>Plate</div><div>Odometer</div><div>Status</div>
+        </div>
+        {vehicles.map(v=>(
+          <div key={v.id} className="trow grid grid-cols-6" onClick={()=>setVehEdit(v)}>
+            <div>{v.year||""}</div><div>{v.make||""}</div><div>{v.model||""}</div>
+            <div>{v.plate}</div><div>{v.currentOdometer}</div>
+            <div>{v.status==="out" ? <Pill tone="warn">out</Pill> : <Pill tone="ok">available</Pill>}</div>
+          </div>
+        ))}
+        {!vehicles.length && <div className="px-3 py-6 opacity-60">No vehicles yet.</div>}
+      </div>
+
+      <Modal open={!!vehEdit} onClose={()=>setVehEdit(null)} title={vehEdit?.id ? "Edit Vehicle" : "Add Vehicle"}
+        footer={<>
+          <button className="btn ghost" onClick={()=>setVehEdit(null)}>Cancel</button>
+          <button className="btn" onClick={async ()=>{
+            const clean = {
+              ...vehEdit,
+              currentOdometer: Number(String(vehEdit.currentOdometer||"").replace(/\D/g,"")) || 0
+            };
+            const saved = await send(`/vehicles/${clean.id||"new"}`, clean.id?"PUT":"POST", clean);
+            // refresh list
+            setVehicles(await get("/vehicles"));
+            setVehEdit(null);
+          }}>Save Vehicle</button>
+        </>}>
+        {vehEdit && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Inp placeholder="Year" value={vehEdit.year||""} onChange={e=>setVehEdit({...vehEdit,year:e.target.value})}/>
+            <Inp placeholder="Make" value={vehEdit.make||""} onChange={e=>setVehEdit({...vehEdit,make:e.target.value})}/>
+            <Inp placeholder="Model" value={vehEdit.model||""} onChange={e=>setVehEdit({...vehEdit,model:e.target.value})}/>
+            <Inp placeholder="VIN" value={vehEdit.vin||""} onChange={e=>setVehEdit({...vehEdit,vin:e.target.value})}/>
+            <Inp placeholder="Color" value={vehEdit.color||""} onChange={e=>setVehEdit({...vehEdit,color:e.target.value})}/>
+            <Inp placeholder="License Plate" value={vehEdit.plate||""} onChange={e=>setVehEdit({...vehEdit,plate:e.target.value})}/>
+            <Inp placeholder="Odometer" inputMode="numeric" value={vehEdit.currentOdometer??""}
+                 onChange={e=>{
+                   const v=e.target.value.replace(/\D/g,""); // strip non-digits, no leading 0 issue
+                   setVehEdit({...vehEdit,currentOdometer:v});
+                 }}/>
+            <Sel value={vehEdit.status||"available"} onChange={e=>setVehEdit({...vehEdit,status:e.target.value})}>
+              <option value="available">available</option>
+              <option value="out">out</option>
+              <option value="service">service</option>
+            </Sel>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+
+  /* ------- Customers ------- */
+  const Customers = () => (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Customers</h2>
+        <button className="btn" onClick={()=>setCustEdit({})}>+ Add Customer</button>
+      </div>
+      <div className="table w-full">
+        <div className="thead grid grid-cols-5">
+          <div>Name</div><div>Email</div><div>Phone</div><div>License #</div><div>Insurance</div>
+        </div>
+        {customers.map(c=>(
+          <div key={c.id} className="trow grid grid-cols-5" onClick={()=>setCustEdit(c)}>
+            <div>{c.name}</div><div>{c.email}</div><div>{c.phone}</div><div>{c.licenseNumber}</div>
+            <div>{c.insurance?.carrier||"-"}</div>
+          </div>
+        ))}
+        {!customers.length && <div className="px-3 py-6 opacity-60">No customers yet.</div>}
+      </div>
+
+      <Modal open={!!custEdit} onClose={()=>setCustEdit(null)} title={custEdit?.id?"Edit Customer":"Add Customer"}
+        footer={<>
+          <button className="btn ghost" onClick={()=>setCustEdit(null)}>Cancel</button>
+          <button className="btn" onClick={async ()=>{
+            const saved = await send(`/customers/${custEdit.id||"new"}`, custEdit.id?"PUT":"POST", custEdit);
+            setCustomers(await get("/customers"));
+            setCustEdit(null);
+          }}>Save Customer</button>
+        </>}>
+        {custEdit && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Inp placeholder="Full Name" value={custEdit.name||""} onChange={e=>setCustEdit({...custEdit,name:e.target.value})}/>
+            <Inp placeholder="Email" value={custEdit.email||""} onChange={e=>setCustEdit({...custEdit,email:e.target.value})}/>
+            <Inp placeholder="Phone" value={custEdit.phone||""} onChange={e=>setCustEdit({...custEdit,phone:e.target.value})}/>
+            <Inp placeholder="Address" value={custEdit.address||""} onChange={e=>setCustEdit({...custEdit,address:e.target.value})}/>
+            <Inp placeholder="Driver License #" value={custEdit.licenseNumber||""} onChange={e=>setCustEdit({...custEdit,licenseNumber:e.target.value})}/>
+            <Inp placeholder="Insurance Carrier" value={custEdit.insurance?.carrier||""}
+                 onChange={e=>setCustEdit({...custEdit,insurance:{...(custEdit.insurance||{}),carrier:e.target.value}})}/>
+            <Inp placeholder="Policy Number" value={custEdit.insurance?.policyNumber||""}
+                 onChange={e=>setCustEdit({...custEdit,insurance:{...(custEdit.insurance||{}),policyNumber:e.target.value}})}/>
+            <Inp placeholder="Insurance Expiration (YYYY-MM-DD)" value={custEdit.insurance?.expiresAt||""}
+                 onChange={e=>setCustEdit({...custEdit,insurance:{...(custEdit.insurance||{}),expiresAt:e.target.value}})}/>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+
+  /* ------- Bookings ------- */
+  const Bookings = () => {
+    const custOptions = customers.map(c=>({label:c.name, value:c.id}));
+    const vehOptions  = vehicles.map(v=>({label:`${v.year||""} ${v.make||""} ${v.model||""} • ${v.plate}`, value:v.id}));
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold">Bookings</h2>
+          <button className="btn" onClick={()=>{ setBookingDraft({customerId:"",vehicleId:"",start:"",end:""}); setNewBookingOpen(true); }}>+ New Booking</button>
+        </div>
+
+        <div className="table w-full">
+          <div className="thead grid grid-cols-6">
+            <div>Customer</div><div>Vehicle</div><div>Start</div><div>End</div><div>Status</div><div>Actions</div>
+          </div>
+          {bookings.map(b=>{
+            const c = customers.find(x=>x.id===b.customerId);
+            const v = vehicles.find(x=>x.id===b.vehicleId);
+            return (
+              <div key={b.id} className="trow grid grid-cols-6">
+                <div>{c?.name||b.customerId}</div>
+                <div>{v?`${v.year||""} ${v.make||""} ${v.model||""} • ${v.plate}`:b.vehicleId}</div>
+                <div>{new Date(b.start).toLocaleString()}</div>
+                <div>{new Date(b.end).toLocaleString()}</div>
+                <div><Pill tone={b.status==="active"?"ok":"default"}>{b.status||"pending"}</Pill></div>
+                <div className="flex gap-2">
+                  <button className="btn xs" onClick={async ()=>{
+                    await send(`/bookings/${b.id}`, "PUT", { ...b, status:"active" });
+                    setBookings(await get("/bookings"));
+                  }}>Start</button>
+                  <button className="btn xs" onClick={async ()=>{
+                    await send(`/bookings/${b.id}`, "PUT", { ...b, status:"returned" });
+                    setBookings(await get("/bookings"));
+                  }}>Return</button>
+                </div>
+              </div>
+            );
+          })}
+          {!bookings.length && <div className="px-3 py-6 opacity-60">No bookings yet.</div>}
+        </div>
+
+        <Modal open={newBookingOpen} onClose={()=>setNewBookingOpen(false)} title="Create Booking"
+          footer={<>
+            <button className="btn ghost" onClick={()=>setNewBookingOpen(false)}>Cancel</button>
+            <button className="btn" onClick={async ()=>{
+              const b = await send("/bookings", "POST", bookingDraft);
+              setBookings(await get("/bookings"));
+              setNewBookingOpen(false);
+            }}>Save Booking</button>
+          </>}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <div className="text-xs mb-1 opacity-70">Customer</div>
+              <SearchableSelect options={custOptions} value={bookingDraft.customerId}
+                                onChange={(val)=>setBookingDraft({...bookingDraft,customerId:val})}/>
+            </div>
+            <div>
+              <div className="text-xs mb-1 opacity-70">Vehicle</div>
+              <SearchableSelect options={vehOptions} value={bookingDraft.vehicleId}
+                                onChange={(val)=>setBookingDraft({...bookingDraft,vehicleId:val})}/>
+            </div>
+            <div>
+              <div className="text-xs mb-1 opacity-70">Start</div>
+              <Inp type="datetime-local" value={bookingDraft.start||""} onChange={e=>setBookingDraft({...bookingDraft,start:e.target.value})}/>
+            </div>
+            <div>
+              <div className="text-xs mb-1 opacity-70">End</div>
+              <Inp type="datetime-local" value={bookingDraft.end||""} onChange={e=>setBookingDraft({...bookingDraft,end:e.target.value})}/>
+            </div>
+          </div>
+        </Modal>
+      </div>
+    );
+  };
+
+  /* ------- Team Chat & Finances placeholders ------- */
+  const TeamChat = () => <div className="opacity-70">Team Chat (coming soon)</div>;
+  const Finances = () => <div className="opacity-70">Finances (coming soon)</div>;
+
   return (
-    <label className={`flex flex-col gap-1 ${full ? "col-span-2" : ""}`}>
-      <span className="text-xs opacity-75">{label}</span>
-      {children}
-    </label>
+    <div className="p-4 max-w-7xl mx-auto text-slate-100">
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        {TABS.map(t=>(
+          <button key={t}
+                  className={`px-3 py-1 rounded border ${tab===t?"bg-green-700 border-green-600":"bg-slate-800 border-slate-700 hover:bg-slate-700"}`}
+                  onClick={()=>setTab(t)}>{t}</button>
+        ))}
+        <div className="ml-auto">{statusPill}</div>
+      </div>
+
+      {tab==="Dashboard" && <Dashboard/>}
+      {tab==="Calendar" && <Calendar/>}
+      {tab==="Vehicles"  && <Vehicles/>}
+      {tab==="Customers" && <Customers/>}
+      {tab==="Bookings"  && <Bookings/>}
+      {tab==="Team Chat" && <TeamChat/>}
+      {tab==="Finances"  && <Finances/>}
+    </div>
   );
 }
-function TwoCol({ children }) {
-  return <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>;
-}
 
-// simple input style
-// (Tailwind-like classes are fine; falls back to defaults if you don't have Tailwind)
+/* ========== tiny style helpers via class names used above ========== */
+// index.css adds .inp, .btn, .table, .thead, .trow classes (see next snippet)
