@@ -57,21 +57,20 @@ function Sel({ className = "", value, onChange, children, ...rest }) {
 
 
 /* Modal: backdrop closes on click; inner panel stops it */
-function Modal({ open = false, onClose, title, width = 760, children, footer }) {
+  function Modal({ open = false, onClose, title, width = 760, children, footer }) {
   if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center select-none"
-      // close on mouse down (not click); avoids focus flicker
-      onMouseDown={onClose}
       role="dialog"
       aria-modal="true"
     >
       <div
         className="rounded bg-slate-900 border border-slate-700 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
-        // block ALL mouse downs inside the panel so the backdrop doesn’t get them
-        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        tabIndex={-1}
+        onKeyDown={(e) => { if (e.key === "Escape") onClose?.(); }}
       >
         {title && (
           <div className="flex items-center justify-between p-4 border-b border-slate-800">
@@ -91,6 +90,7 @@ function Modal({ open = false, onClose, title, width = 760, children, footer }) 
     </div>
   );
 }
+
 
 
 /* Searchable dropdown */
