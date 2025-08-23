@@ -26,35 +26,72 @@ const Tile = ({ label, value }) => (
 );
 
 /* Plain inputs (no event hacks) */
-function Inp(props) {
-  return <input {...props} className={"inp " + (props.className || "")} autoComplete="off" spellCheck={false} />;
+function Inp({ className = "", value, onChange, ...rest }) {
+  return (
+    <input
+      {...rest}
+      className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+      autoComplete="off"
+      // prevent backdrop from seeing this click and stealing focus
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
 }
-function Sel(props) {
-  return <select {...props} className={"inp " + (props.className || "")} />;
+
+function Sel({ className = "", value, onChange, children, ...rest }) {
+  return (
+    <select
+      {...rest}
+      className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {children}
+    </select>
+  );
 }
 
 /* Modal: backdrop closes on click; inner panel stops it */
-function Modal({ open = true, onClose, title, children, footer, width = 760 }) {
+function Modal({ open = false, onClose, title, width = 760, children, footer }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center select-none"
+      // close on mouse down (not click); avoids focus flicker
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
       <div
-        className="rounded bg-slate-900 border border-slate-700 p-4 shadow-xl w-full"
+        className="rounded bg-slate-900 border border-slate-700 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
-        onClick={(e) => e.stopPropagation()}
+        // block ALL mouse downs inside the panel so the backdrop doesn’t get them
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center justify-between p-4 border-b border-slate-800">
             <h3 className="text-lg font-semibold">{title}</h3>
-            <button className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700" onClick={onClose}>✕</button>
+            <button
+              type="button"
+              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700"
+              onClick={onClose}
+            >
+              ×
+            </button>
           </div>
         )}
-        {children}
-        {footer && <div className="mt-4 flex gap-2 justify-end">{footer}</div>}
+        <div className="p-4">{children}</div>
+        {footer && <div className="p-4 border-t border-slate-800 flex justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );
 }
+
 
 /* Searchable dropdown */
 function SearchableSelect({ options, value, onChange, labelKey="label", valueKey="value", placeholder="Type to search..." }) {
