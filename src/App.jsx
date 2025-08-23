@@ -28,58 +28,29 @@ const Tile = ({ label, value }) => (
 );
 
 // DROP IN REPLACEMENT — paste over your current Inp and Sel
-function Inp({ className = "", value, onChange, ...rest }) {
-  const dispatch = (e) => {
-    if (!onChange) return;
-    // 1) event-style handlers
-    try { onChange(e); } catch {}
-    // 2) value-style handlers
-    try { onChange(e?.target?.value ?? ""); } catch {}
-  };
-  const stopAll = (e) => {
-    e.stopPropagation();
-    if (typeof e.nativeEvent?.stopImmediatePropagation === "function") {
-      e.nativeEvent.stopImmediatePropagation();
-    }
-  };
+function Inp({ className = "", onChange, ...rest }) {
   return (
     <input
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
-      value={value ?? ""}
-      onChange={dispatch}
+      // pass the native event (most of your code expects e.target.value)
+      onChange={onChange}
       autoComplete="off"
-      onMouseDown={stopAll}
-      onClick={stopAll}
-      onKeyDown={stopAll}
-      onKeyUp={stopAll}
-      onInput={stopAll}
+      // keep the modal from seeing clicks so focus doesn't jump
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     />
   );
 }
 
-function Sel({ className = "", value, onChange, children, ...rest }) {
-  const dispatch = (e) => {
-    if (!onChange) return;
-    try { onChange(e); } catch {}
-    try { onChange(e?.target?.value ?? ""); } catch {}
-  };
-  const stopAll = (e) => {
-    e.stopPropagation();
-    if (typeof e.nativeEvent?.stopImmediatePropagation === "function") {
-      e.nativeEvent.stopImmediatePropagation();
-    }
-  };
+function Sel({ className = "", onChange, children, ...rest }) {
   return (
     <select
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
-      value={value ?? ""}
-      onChange={dispatch}
-      onMouseDown={stopAll}
-      onClick={stopAll}
-      onKeyDown={stopAll}
-      onKeyUp={stopAll}
+      onChange={onChange}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       {children}
     </select>
