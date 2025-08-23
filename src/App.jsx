@@ -32,9 +32,8 @@ function Inp({ className = "", value, onChange, ...rest }) {
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
       value={value ?? ""}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={(e) => onChange?.(e)}        // <-- pass the event
       autoComplete="off"
-      // prevent backdrop from seeing this click and stealing focus
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     />
@@ -47,7 +46,7 @@ function Sel({ className = "", value, onChange, children, ...rest }) {
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
       value={value ?? ""}
-      onChange={(e) => onChange?.(e.target.value)}
+      onChange={(e) => onChange?.(e)}       // <-- pass the event
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
@@ -55,6 +54,7 @@ function Sel({ className = "", value, onChange, children, ...rest }) {
     </select>
   );
 }
+
 
 /* Modal: backdrop closes on click; inner panel stops it */
 function Modal({ open = false, onClose, title, width = 760, children, footer }) {
