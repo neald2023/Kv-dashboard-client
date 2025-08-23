@@ -26,27 +26,56 @@ const Tile = ({ label, value }) => (
 );
 
 /* Plain inputs (no event hacks) */
-function Inp(props) {
-  return <input {...props} className={"inp " + (props.className || "")} autoComplete="off" spellCheck={false} />;
+function Inp({ value, onChange, ...props }) {
+  return (
+    <input
+      {...props}
+      value={value || ""}
+      onChange={(e) => onChange && onChange(e.target.value)}
+      className={"inp " + (props.className || "")}
+    />
+  );
 }
-function Sel(props) {
-  return <select {...props} className={"inp " + (props.className || "")} />;
+
+function Sel({ value, onChange, children, ...props }) {
+  return (
+    <select
+      {...props}
+      value={value || ""}
+      onChange={(e) => onChange && onChange(e.target.value)}
+      className={"inp " + (props.className || "")}
+    >
+      {children}
+    </select>
+  );
 }
 
 /* Modal: backdrop closes on click; inner panel stops it */
+// Modal: backdrop closes on click; inner panel stops it; Esc closes too
 function Modal({ open = true, onClose, title, children, footer, width = 760 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center select-none"
+      onClick={onClose} // click backdrop to close
+    >
       <div
         className="rounded bg-slate-900 border border-slate-700 p-4 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}     // don't close when clicking inside
+        tabIndex={-1}                             // allow keydown without focusing an input yet
+        onKeyDown={(e) => { if (e.key === "Escape") onClose?.(); }}
       >
         {title && (
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-lg font-semibold">{title}</h3>
-            <button className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700" onClick={onClose}>✕</button>
+            <button
+              type="button"
+              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700"
+              onClick={onClose}
+            >
+              ×
+            </button>
           </div>
         )}
         {children}
@@ -55,6 +84,8 @@ function Modal({ open = true, onClose, title, children, footer, width = 760 }) {
     </div>
   );
 }
+
+
 
 /* Searchable dropdown */
 function SearchableSelect({ options, value, onChange, labelKey="label", valueKey="value", placeholder="Type to search..." }) {
