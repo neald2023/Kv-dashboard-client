@@ -9,9 +9,9 @@ async function api(path, opts = {}) {
   if (!res.ok) throw new Error(`${opts.method || "GET"} ${path} → ${res.status}`);
   return res.json();
 }
-const get = (p) => api(p);
+const get  = (p) => api(p);
 const send = (p, m, body) => api(p, { method: m, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-const del = (p) => api(p, { method: "DELETE" });
+const del  = (p) => api(p, { method: "DELETE" });
 
 /* ================== SMALL UI BITS ================== */
 const Pill = ({ tone = "default", children }) => {
@@ -25,50 +25,23 @@ const Tile = ({ label, value }) => (
   </div>
 );
 
-/* Inputs that keep focus (stop all bubbling) */
+/* Plain inputs (no event hacks) */
 function Inp(props) {
-  return (
-    <input
-      {...props}
-      className={"inp " + (props.className || "")}
-      autoComplete="off"
-      spellCheck={false}
-      onMouseDown={(e)=>{ e.stopPropagation(); props.onMouseDown?.(e); }}
-      onClick={(e)=>{ e.stopPropagation(); props.onClick?.(e); }}
-      onKeyDown={(e)=>{ e.stopPropagation(); props.onKeyDown?.(e); }}
-      onKeyUp={(e)=>{ e.stopPropagation(); props.onKeyUp?.(e); }}
-      onFocus={(e)=>{ e.stopPropagation(); props.onFocus?.(e); }}
-    />
-  );
+  return <input {...props} className={"inp " + (props.className || "")} autoComplete="off" spellCheck={false} />;
 }
 function Sel(props) {
-  return (
-    <select
-      {...props}
-      className={"inp " + (props.className || "")}
-      onMouseDown={(e)=>{ e.stopPropagation(); props.onMouseDown?.(e); }}
-      onClick={(e)=>{ e.stopPropagation(); props.onClick?.(e); }}
-      onKeyDown={(e)=>{ e.stopPropagation(); props.onKeyDown?.(e); }}
-      onKeyUp={(e)=>{ e.stopPropagation(); props.onKeyUp?.(e); }}
-    />
-  );
+  return <select {...props} className={"inp " + (props.className || "")} />;
 }
 
-/* Modal: backdrop closes; panel keeps events inside (prevents focus loss) */
+/* Modal: backdrop closes on click; inner panel stops it */
 function Modal({ open = true, onClose, title, children, footer, width = 760 }) {
   if (!open) return null;
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
-      onMouseDown={onClose}
-    >
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
       <div
         className="rounded bg-slate-900 border border-slate-700 p-4 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
-        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        onKeyDown={(e) => e.stopPropagation()}
-        onKeyUp={(e) => e.stopPropagation()}
       >
         {title && (
           <div className="flex items-center justify-between mb-3">
@@ -83,12 +56,12 @@ function Modal({ open = true, onClose, title, children, footer, width = 760 }) {
   );
 }
 
-/* Searchable dropdown (type to filter, pick one) */
+/* Searchable dropdown */
 function SearchableSelect({ options, value, onChange, labelKey="label", valueKey="value", placeholder="Type to search..." }) {
   const [q, setQ] = useState("");
-  const filtered = useMemo(() => options.filter(o => String(o[labelKey]).toLowerCase().includes(q.toLowerCase())), [options,q,labelKey]);
+  const filtered = useMemo(() => options.filter(o => String(o[labelKey]).toLowerCase().includes(q.toLowerCase())), [options, q, labelKey]);
   return (
-    <div className="flex flex-col gap-1" onClick={(e)=>e.stopPropagation()}>
+    <div className="flex flex-col gap-1">
       <Inp placeholder={placeholder} value={q} onChange={(e)=>setQ(e.target.value)} />
       <div className="max-h-40 overflow-auto border border-slate-700 rounded">
         {filtered.map(o=>(
@@ -301,7 +274,7 @@ export default function App() {
     const remove = async (id, e) => { e?.stopPropagation?.(); try { await del(`/vehicles/${id}`); } catch {}; setVehicles(prev=>prev.filter(x=>x.id!==id)); };
 
     return (
-      <div className="space-y-3" onClick={(e)=>e.stopPropagation()}>
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Vehicles</h2>
           <button className="btn" onClick={()=>setVehEdit({ id:undefined, year:"", make:"", model:"", vin:"", color:"", plate:"", currentOdometer:"", status:"available" })}>
@@ -404,7 +377,7 @@ export default function App() {
     },[customers,filter]);
 
     return (
-      <div className="space-y-3" onClick={(e)=>e.stopPropagation()}>
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Customers</h2>
           <div className="flex items-center gap-2">
@@ -521,7 +494,7 @@ export default function App() {
     }
 
     return (
-      <div className="space-y-3" onClick={(e)=>e.stopPropagation()}>
+      <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Bookings</h2>
           <button className="btn" onClick={()=>setNewBookingOpen(true)}>+ New Booking</button>
@@ -713,7 +686,7 @@ export default function App() {
 
   /* ================== SHELL ================== */
   return (
-    <div className="p-4 max-w-7xl mx-auto text-slate-100" onClick={(e)=>e.stopPropagation()}>
+    <div className="p-4 max-w-7xl mx-auto text-slate-100">
       <div className="flex items-center gap-2 mb-3 flex-wrap">
         {TABS.map(t=>(
           <button key={t}
