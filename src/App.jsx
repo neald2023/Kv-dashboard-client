@@ -38,19 +38,16 @@ function Inp(props) {
     <input
       {...props}
       className={"inp " + (props.className || "")}
-      onClick={(e) => {
-        e.stopPropagation();
-        props.onClick?.(e);
-      }}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        props.onKeyDown?.(e);
-      }}
       autoComplete="off"
       spellCheck={false}
+      onMouseDown={(e) => { e.stopPropagation(); props.onMouseDown?.(e); }}
+      onClick={(e) => { e.stopPropagation(); props.onClick?.(e); }}
+      onKeyDown={(e) => { e.stopPropagation(); props.onKeyDown?.(e); }}
+      onKeyUp={(e) => { e.stopPropagation(); props.onKeyUp?.(e); }}
     />
   );
 }
+
 function Sel(props) {
   return (
     <select
@@ -72,12 +69,19 @@ function Sel(props) {
 function Modal({ open = true, onClose, title, children, footer, width = 760 }) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center"
+      // Use mouse *down* so clicks inside the panel can stop it.
+      onMouseDown={onClose}
+    >
       <div
         className="rounded bg-slate-900 border border-slate-700 p-4 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
+        // Stop mouse & key events from reaching the backdrop
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => e.stopPropagation()}
+        onKeyUp={(e) => e.stopPropagation()}
       >
         {title && (
           <div className="flex items-center justify-between mb-3">
