@@ -27,28 +27,34 @@ const Tile = ({ label, value }) => (
 
 /* Plain inputs (no event hacks) */
 function Inp({ className = "", value, onChange, ...rest }) {
+  const stopAll = (e) => e.stopPropagation();
   return (
     <input
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
       value={value ?? ""}
-      onChange={(e) => onChange?.(e)}        // <-- pass the event
+      onChange={(e) => onChange?.(e)}  // keep passing the event (your code expects e.target.value)
       autoComplete="off"
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onMouseDown={stopAll}
+      onClick={stopAll}
+      onKeyDown={stopAll}
+      onKeyUp={stopAll}
     />
   );
 }
 
 function Sel({ className = "", value, onChange, children, ...rest }) {
+  const stopAll = (e) => e.stopPropagation();
   return (
     <select
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
       value={value ?? ""}
-      onChange={(e) => onChange?.(e)}       // <-- pass the event
-      onMouseDown={(e) => e.stopPropagation()}
-      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => onChange?.(e)}  // pass the event
+      onMouseDown={stopAll}
+      onClick={stopAll}
+      onKeyDown={stopAll}
+      onKeyUp={stopAll}
     >
       {children}
     </select>
@@ -56,8 +62,9 @@ function Sel({ className = "", value, onChange, children, ...rest }) {
 }
 
 
+
 /* Modal: backdrop closes on click; inner panel stops it */
-  function Modal({ open = false, onClose, title, width = 760, children, footer }) {
+function Modal({ open = false, onClose, title, width = 760, children, footer }) {
   if (!open) return null;
   return (
     <div
