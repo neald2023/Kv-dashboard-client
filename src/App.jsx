@@ -1,6 +1,8 @@
 // src/App.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import "./index.css";
+
 
 /* ================== API HELPERS ================== */
 const API = (import.meta.env.VITE_API_URL || "").replace(/\/+$/, "");
@@ -66,7 +68,8 @@ function Sel({ className = "", value, onChange, children, ...rest }) {
 /* Modal: backdrop closes on click; inner panel stops it */
 function Modal({ open = false, onClose, title, width = 760, children, footer }) {
   if (!open) return null;
-  return (
+
+  const modalEl = (
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center select-none"
       role="dialog"
@@ -75,6 +78,7 @@ function Modal({ open = false, onClose, title, width = 760, children, footer }) 
       <div
         className="rounded bg-slate-900 border border-slate-700 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
+        // keep all interactions inside; backdrop does NOT close
         onClick={(e) => e.stopPropagation()}
         tabIndex={-1}
         onKeyDown={(e) => { if (e.key === "Escape") onClose?.(); }}
@@ -92,10 +96,16 @@ function Modal({ open = false, onClose, title, width = 760, children, footer }) 
           </div>
         )}
         <div className="p-4">{children}</div>
-        {footer && <div className="p-4 border-t border-slate-800 flex justify-end gap-2">{footer}</div>}
+        {footer && (
+          <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   );
+
+  return createPortal(modalEl, document.body);
 }
 
 
