@@ -72,46 +72,186 @@ function Sel({ className = "", value, onChange, children, ...rest }) {
   );
 }
 
-/** Portal Modal (renders under document.body) so table rows/backdrop
- *  can’t steal focus. Backdrop does NOT auto-close; only X/Esc/Cancel. */
-function Modal({ open = false, onClose, title, width = 760, children, footer }) {
-  if (!open) return null;
-  const modalEl = (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center select-none"
-      role="dialog"
-      aria-modal="true"
-      onKeyDown={(e) => { if (e.key === "Escape") onClose?.(); }}
-    >
-      <div
-        className="rounded bg-slate-900 border border-slate-700 shadow-xl w-full"
-        style={{ maxWidth: width, width: "95vw" }}
-        onMouseDown={(e) => e.stopPropagation()} // keep all clicks inside
-        onClick={(e) => e.stopPropagation()}
-      >
-        {title && (
-          <div className="flex items-center justify-between p-4 border-b border-slate-800">
-            <h3 className="text-lg font-semibold">{title}</h3>
-            <button
-              type="button"
-              className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700"
-              onClick={onClose}
-            >
-              ×
-            </button>
-          </div>
-        )}
-        <div className="p-4">{children}</div>
-        {footer && (
-          <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
-            {footer}
-          </div>
-        )}
+/* ================== VEHICLES ================== */
+const Vehicles = () => {
+  // Local modal state separate from the table list
+  const [vehForm, setVehForm] = React.useState(null); // local buffer for typing
+
+  // Open editor for an existing vehicle
+  function openRow(v) {
+    if (!v) return;
+    setVehEdit(v);
+    setVehForm({
+      ...v,
+      currentOdometerText:
+        v.currentOdometer !== undefined && v.currentOdometer !== null
+          ? String(v.currentOdometer)
+          : "",
+    });
+  }
+
+  // Open blank "Add Vehicle"
+  function openNew() {
+    const blank = {
+      id: undefined,
+      year: "",
+      make: "",
+      model: "",
+      vin: "",
+      color: "",
+      plate: "",
+      status: "available",
+      currentOdometer: "",
+    };
+    setVehEdit(blank);
+    setVehForm({ ...blank, currentOdometerText: "" });
+  }
+
+  // Keep vehForm in sync if vehEdit changes externally
+  React.useEffect(() => {
+    if (!vehEdit) { setVehForm(null); return; }
+    setVehForm({
+      ...vehEdit,
+      currentOdometerText:
+        vehEdit.currentOdometer !== undefined && vehEdit.currentOdometer !== null
+          ? String(vehEdit.currentOdometer)
+          : "",
+    });
+  }, [vehEdit]);
+
+  async function saveVehicle() {
+    if (!vehForm) return;
+
+    const odo = Number((vehForm.currentOdometerText || "").replace(/\D/g, "") || 0);
+
+    const payload = {
+      id: vehForm.id,
+      year: vehForm.year?.trim() || "",
+      make: vehForm.make?.trim() || "",
+      model: vehForm.model?.trim() || "",
+      vin: vehForm.vin?.trim() || "",
+      color: vehForm.color?.trim() || "",
+      plate: vehForm.plate?.trim() || "",
+      status: vehForm.status || "available",
+      currentOdometer: odo,
+    };
+
+    try {
+      if (payload.id) {
+        await send(`/vehicles/${payload.id}`, "PUT", payload);
+        setVehicles(prev => prev.map(x => (x.id === payload.id ? payload : x)));
+      } else {
+        const created = await send(`/vehicles`, "POST", payload);
+        const withId = created?.id ? created : { ...payload, id: `veh_${Date.now()}` };
+        setVehicles(prev => [withId, ...prev]);
+      }
+    } catch {}
+
+    setVehEdit(null);
+  }
+
+  const remove = async (id, e) => {
+    e?.stopPropagation?.();
+    try { await del(`/vehicles/${id}`); } catch {}
+    setVehicles(prev => prev.filter(x => x.id !== id));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Vehicles</h2>
+        <button className="btn" onClick={openNew}>+ Add Vehicle</button>
       </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left border-b border-slate-700">
+              <th className="py-2 pr-4">Vehicle</th>
+              <th className="py-2 pr-4">Plate</th>
+              <th className="py-2 pr-4">Odometer</th>
+              <th className="py-2 pr-4">Status</th>
+              <th className="py-2 pr-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vehicles.map(v => (
+              <tr
+                key={v.id}
+                className="border-b border-slate-800 hover:bg-slate-800/40 cursor-pointer"
+                onClick={() => openRow(v)}
+              >
+                <td className="py-2 pr-4 whitespace-nowrap">
+                  {v.year ? `${v.year} ` : ""}{v.make || ""} {v.model || ""}
+                </td>
+                <td className="py-2 pr-4">{v.plate || "-"}</td>
+                <td className="py-2 pr-4">{v.currentOdometer ?? 0}</td>
+                <td className="py-2 pr-4">
+                  {v.status === "available" ? <Pill tone="ok">available</Pill> :
+                   v.status === "out"       ? <Pill tone="warn">out</Pill> :
+                                               <Pill>service</Pill>}
+                </td>
+                <td className="py-2 pr-2 text-right">
+                  <button className="btn-xs mr-2" onClick={(e) => { e.stopPropagation(); openRow(v); }}>✏️</button>
+                  <button className="btn-xs" onClick={(e) => remove(v.id, e)}>🗑️</button>
+                </td>
+              </tr>
+            ))}
+            {!vehicles.length && (
+              <tr>
+                <td className="py-6 text-slate-400" colSpan={5}>
+                  No vehicles yet. Click <b>+ Add Vehicle</b> to create one.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <Modal
+        open={!!vehEdit}
+        onClose={() => setVehEdit(null)}
+        title={vehEdit?.id ? "Edit Vehicle" : "Add Vehicle"}
+        footer={
+          <>
+            <button className="btn" onClick={() => setVehEdit(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveVehicle}>Save Vehicle</button>
+          </>
+        }
+      >
+        {vehForm && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Inp placeholder="Year"          value={vehForm.year}  onChange={v => setVehForm(f => ({ ...f, year: v }))} />
+            <Inp placeholder="Make"          value={vehForm.make}  onChange={v => setVehForm(f => ({ ...f, make: v }))} />
+            <Inp placeholder="Model"         value={vehForm.model} onChange={v => setVehForm(f => ({ ...f, model: v }))} />
+            <Inp placeholder="VIN"           value={vehForm.vin}   onChange={v => setVehForm(f => ({ ...f, vin: v }))} />
+            <Inp placeholder="Color"         value={vehForm.color} onChange={v => setVehForm(f => ({ ...f, color: v }))} />
+            <Inp placeholder="License Plate" value={vehForm.plate} onChange={v => setVehForm(f => ({ ...f, plate: v }))} />
+
+            <Inp
+              placeholder="Odometer"
+              inputMode="numeric"
+              value={vehForm.currentOdometerText}
+              onChange={(val) => {
+                const digits = String(val || "").replace(/\D/g, "");
+                setVehForm(f => ({ ...f, currentOdometerText: digits }));
+              }}
+            />
+
+            <Sel
+              value={vehForm.status}
+              onChange={(val) => setVehForm(f => ({ ...f, status: val }))}
+            >
+              <option value="available">available</option>
+              <option value="out">out</option>
+              <option value="service">service</option>
+            </Sel>
+          </div>
+        )}
+      </Modal>
     </div>
   );
-  return createPortal(modalEl, document.body);
-}
+};
 
 /** Simple searchable list (type to filter, click to choose) */
 function SearchableSelect({ options, value, onChange, placeholder = "Type to search…" }) {
