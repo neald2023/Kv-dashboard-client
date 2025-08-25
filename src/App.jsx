@@ -264,103 +264,186 @@ export default function App() {
     );
   };
 
-  /* -------- VEHICLES -------- */
-  const Vehicles = () => {
-    const openRow = (v) => { if (vehEdit) return; setVehEdit({ ...v }); };
+ /* ================== BOOKINGS (with tax) ================== */
+const Bookings = () => {
+  const TAX_RATE = 0.08; // 8%
 
-    async function saveVehicle() {
-      // sanitize odometer
-      const odoStr = `${vehEdit.currentOdometer ?? ""}`.replace(/\D/g,"");
-      const cleaned = { ...vehEdit, currentOdometer: odoStr === "" ? 0 : Number(odoStr) };
-      try {
-        if (cleaned.id) {
-          await send(`/vehicles/${cleaned.id}`, "PUT", cleaned);
-          setVehicles((prev)=>prev.map(x=>x.id===cleaned.id?cleaned:x));
-        } else {
-          const created = await send(`/vehicles`, "POST", cleaned);
-          setVehicles((prev)=>[{...(created||cleaned), id: created?.id || `veh_${Date.now()}`}, ...prev]);
-        }
-      } catch {}
-      setVehEdit(null);
+  // Local typing buffer just for the price field
+  const [priceText, setPriceText] = React.useState("");
+
+  // Reset the price buffer whenever the dialog opens
+  React.useEffect(() => {
+    if (newBookingOpen) {
+      setPriceText(String(bookingDraft.price ?? ""));
     }
-    const remove = async (id, e) => { e?.stopPropagation?.(); try { await del(`/vehicles/${id}`); } catch {}; setVehicles(prev=>prev.filter(x=>x.id!==id)); };
+  }, [newBookingOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Vehicles</h2>
-          <button className="btn" onClick={()=>setVehEdit({ id:undefined, year:"", make:"", model:"", vin:"", color:"", plate:"", currentOdometer:"", status:"available" })}>
-            + Add Vehicle
-          </button>
-        </div>
+  // options for searchable selects
+  const custOptions = customers.map(c => ({ label: `${c.name} — ${c.phone || ""}`, value: c.id }));
+  const vehOptions  = vehicles.map(v => ({ label: `${v.year || ""} ${v.make || ""} ${v.model || ""} • ${v.plate || ""}`, value: v.id }));
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b border-slate-700">
-                <th className="py-2 pr-4">Vehicle</th>
-                <th className="py-2 pr-4">Plate</th>
-                <th className="py-2 pr-4">Odometer</th>
-                <th className="py-2 pr-4">Status</th>
-                <th className="py-2 pr-2 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {vehicles.map((v)=>(
-                <tr key={v.id} className="border-b border-slate-800 hover:bg-slate-800/40 cursor-pointer" onClick={()=>openRow(v)}>
-                  <td className="py-2 pr-4 whitespace-nowrap">{v.year?`${v.year} `:""}{v.make||""} {v.model||""}</td>
-                  <td className="py-2 pr-4">{v.plate || "-"}</td>
-                  <td className="py-2 pr-4">{v.currentOdometer ?? 0}</td>
-                  <td className="py-2 pr-4">{v.status==="available"?<Pill tone="ok">available</Pill>:v.status==="out"?<Pill tone="warn">out</Pill>:<Pill>service</Pill>}</td>
+  const setDraft = (patch) => setBookingDraft(d => ({ ...d, ...patch }));
+
+  // Totals are calculated from the *buffer*, so typing stays smooth
+  const subtotal = Number(priceText || 0);
+  const tax      = Math.round(subtotal * TAX_RATE * 100) / 100;
+  const total    = Math.round((subtotal + tax) * 100) / 100;
+
+  async function saveBooking() {
+    const body = {
+      customerId: bookingDraft.customerId,
+      vehicleId:  bookingDraft.vehicleId,
+      startDate:  bookingDraft.start || bookingDraft.startDate,
+      endDate:    bookingDraft.end   || bookingDraft.endDate,
+      price:      subtotal,   // numeric
+      taxRate:    TAX_RATE,
+      tax,
+      total,
+      notes:      bookingDraft.notes || "",
+    };
+    try {
+      await send("/bookings", "POST", body);
+      setBookings(await get("/bookings"));
+      setVehicles(await get("/vehicles"));
+      setSummary(await get("/stats/summary").catch(() => summary));
+    } catch {}
+    setNewBookingOpen(false);
+    setBookingDraft({ customerId:"", vehicleId:"", start:"", end:"", price:"", notes:"" });
+  }
+
+  async function mark(id, status) {
+    try {
+      await send(`/bookings/${id}`, "PUT", { status });
+      setBookings(await get("/bookings"));
+      setVehicles(await get("/vehicles"));
+      setSummary(await get("/stats/summary").catch(() => summary));
+    } catch {}
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Bookings</h2>
+        <button className="btn" onClick={() => setNewBookingOpen(true)}>+ New Booking</button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left border-b border-slate-700">
+              <th className="py-2 pr-4">Customer</th>
+              <th className="py-2 pr-4">Vehicle</th>
+              <th className="py-2 pr-4">Start</th>
+              <th className="py-2 pr-4">End</th>
+              <th className="py-2 pr-4">Status</th>
+              <th className="py-2 pr-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bookings.map(b => {
+              const c = customers.find(x => x.id === b.customerId);
+              const v = vehicles.find(x => x.id === b.vehicleId);
+              return (
+                <tr key={b.id} className="border-b border-slate-800">
+                  <td className="py-2 pr-4">{c?.name || b.customer || b.customerId}</td>
+                  <td className="py-2 pr-4">
+                    {v ? `${v.year || ""} ${v.make || ""} ${v.model || ""} • ${v.plate || ""}` : (b.vehicle || b.vehicleId)}
+                  </td>
+                  <td className="py-2 pr-4">{new Date(b.start ?? b.startDate).toLocaleString()}</td>
+                  <td className="py-2 pr-4">{new Date(b.end ?? b.endDate).toLocaleString()}</td>
+                  <td className="py-2 pr-4">
+                    {b.status === "active"    ? <Pill tone="warn">active</Pill> :
+                     b.status === "completed" ? <Pill tone="ok">completed</Pill> :
+                                                <Pill>canceled</Pill>}
+                  </td>
                   <td className="py-2 pr-2 text-right">
-                    <button className="btn-xs mr-2" onClick={(e)=>{ e.stopPropagation(); openRow(v); }}>✏️</button>
-                    <button className="btn-xs" onClick={(e)=>remove(v.id, e)}>🗑️</button>
+                    <button className="btn-xs mr-2" onClick={() => mark(b.id, "active")}>Start</button>
+                    <button className="btn-xs mr-2" onClick={() => mark(b.id, "completed")}>Complete</button>
+                    <button className="btn-xs" onClick={() => mark(b.id, "canceled")}>Cancel</button>
                   </td>
                 </tr>
-              ))}
-              {!vehicles.length && (
-                <tr><td className="py-6 text-slate-400" colSpan={5}>No vehicles yet. Click <b>+ Add Vehicle</b>.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <Modal
-          open={!!vehEdit}
-          onClose={()=>setVehEdit(null)}
-          title={vehEdit?.id ? "Edit Vehicle" : "Add Vehicle"}
-          footer={
-            <>
-              <button className="btn" onClick={()=>setVehEdit(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveVehicle}>Save Vehicle</button>
-            </>
-          }
-        >
-          {vehEdit && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Inp placeholder="Year" value={vehEdit.year ?? ""} onChange={(e)=>setVehEdit(x=>({...x, year:e.target.value}))}/>
-              <Inp placeholder="Make" value={vehEdit.make ?? ""} onChange={(e)=>setVehEdit(x=>({...x, make:e.target.value}))}/>
-              <Inp placeholder="Model" value={vehEdit.model ?? ""} onChange={(e)=>setVehEdit(x=>({...x, model:e.target.value}))}/>
-              <Inp placeholder="VIN" value={vehEdit.vin ?? ""} onChange={(e)=>setVehEdit(x=>({...x, vin:e.target.value}))}/>
-              <Inp placeholder="Color" value={vehEdit.color ?? ""} onChange={(e)=>setVehEdit(x=>({...x, color:e.target.value}))}/>
-              <Inp placeholder="License Plate" value={vehEdit.plate ?? ""} onChange={(e)=>setVehEdit(x=>({...x, plate:e.target.value}))}/>
-              <Inp
-                placeholder="Odometer"
-                inputMode="numeric"
-                value={vehEdit.currentOdometer === 0 ? "0" : (vehEdit.currentOdometer ?? "")}
-                onChange={(e)=>{ const digits = (e.target.value||"").replace(/\D/g,""); setVehEdit(x=>({...x, currentOdometer: digits==="" ? "" : Number(digits)})); }}
-              />
-              <Sel value={vehEdit.status ?? "available"} onChange={(e)=>setVehEdit(x=>({...x, status:e.target.value}))}>
-                <option value="available">available</option>
-                <option value="out">out</option>
-                <option value="service">service</option>
-              </Sel>
-            </div>
-          )}
-        </Modal>
+              );
+            })}
+            {!bookings.length && (
+              <tr><td className="py-6 text-slate-400" colSpan={6}>No bookings yet. Click <b>+ New Booking</b> to create one.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
-    );
-  };
+
+      <Modal
+        open={newBookingOpen}
+        onClose={() => setNewBookingOpen(false)}
+        title="Create Booking"
+        footer={
+          <>
+            <button className="btn" onClick={() => setNewBookingOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveBooking}>Save Booking</button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs mb-1 opacity-70">Customer</div>
+            <SearchableSelect
+              options={custOptions}
+              value={bookingDraft.customerId}
+              onChange={(val) => setDraft({ customerId: val })}
+            />
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">Vehicle</div>
+            <SearchableSelect
+              options={vehOptions}
+              value={bookingDraft.vehicleId}
+              onChange={(val) => setDraft({ vehicleId: val })}
+            />
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">Start</div>
+            <Inp type="datetime-local" value={bookingDraft.start || ""} onChange={(e) => setDraft({ start: e.target.value })}/>
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">End</div>
+            <Inp type="datetime-local" value={bookingDraft.end || ""} onChange={(e) => setDraft({ end: e.target.value })}/>
+          </div>
+
+          <div>
+            <div className="text-xs mb-1 opacity-70">Price (base)</div>
+            <Inp
+              inputMode="decimal"
+              value={priceText}
+              onChange={(e) => {
+                const cleaned = (e.target.value || "")
+                  .replace(/[^\d.]/g, "")          // keep digits + one dot
+                  .replace(/(\..*)\./g, "$1");     // prevent two dots
+                setPriceText(cleaned);
+                setDraft({ price: cleaned });
+              }}
+              placeholder="e.g. 100"
+            />
+          </div>
+
+          {/* Subtotal / Tax / Total */}
+          <div className="md:col-span-2 grid grid-cols-2 gap-2">
+            <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between">
+              <span className="text-xs opacity-70">Subtotal</span>
+              <span>${subtotal.toFixed(2)}</span>
+            </div>
+            <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between">
+              <span className="text-xs opacity-70">Tax (8%)</span>
+              <span>${tax.toFixed(2)}</span>
+            </div>
+            <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between col-span-2">
+              <span className="text-xs opacity-70">Total</span>
+              <span className="text-lg font-semibold">${total.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
 
   /* -------- CUSTOMERS -------- */
   const Customers = () => {
