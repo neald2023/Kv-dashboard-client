@@ -27,56 +27,59 @@ const Tile = ({ label, value }) => (
   </div>
 );
 
-// DROP IN REPLACEMENT — paste over your current Inp and Sel
-function Inp({ className = "", onChange, ...rest }) {
+/* Plain inputs that never lose focus and don’t bubble to the backdrop */
+function Inp({ className = "", value, onChange, ...rest }) {
   return (
     <input
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
-      // pass the native event (most of your code expects e.target.value)
-      onChange={onChange}
+      value={value ?? ""}
+      // use onInput for reliable character-by-character updates
+      onInput={(e) => onChange?.(e)}
       autoComplete="off"
-      // keep the modal from seeing clicks so focus doesn't jump
+      // stop any pointer/keyboard event from reaching the backdrop
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     />
   );
 }
 
-function Sel({ className = "", onChange, children, ...rest }) {
+function Sel({ className = "", value, onChange, children, ...rest }) {
   return (
     <select
       {...rest}
       className={`w-full rounded border border-slate-700 bg-slate-800 px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500 ${className}`}
-      onChange={onChange}
+      value={value ?? ""}
+      onInput={(e) => onChange?.(e)}
       onMouseDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     >
       {children}
     </select>
   );
 }
 
-
-
-
-/* Modal: backdrop closes on click; inner panel stops it */
+/* Modal: never auto-close on backdrop; only via X/Cancel. Blocks event bubbling. */
 function Modal({ open = false, onClose, title, width = 760, children, footer }) {
   if (!open) return null;
-
-  const modalEl = (
+  return (
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center select-none"
       role="dialog"
       aria-modal="true"
+      // don’t auto-close on backdrop click anymore
+      onMouseDown={(e) => { /* noop */ }}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose?.(); }}
     >
       <div
         className="rounded bg-slate-900 border border-slate-700 shadow-xl w-full"
         style={{ maxWidth: width, width: "95vw" }}
-        // keep all interactions inside; backdrop does NOT close
+        // block *all* pointer events from leaving the panel
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
-        tabIndex={-1}
-        onKeyDown={(e) => { if (e.key === "Escape") onClose?.(); }}
+        onPointerDownCapture={(e) => e.stopPropagation()}
       >
         {title && (
           <div className="flex items-center justify-between p-4 border-b border-slate-800">
@@ -99,8 +102,6 @@ function Modal({ open = false, onClose, title, width = 760, children, footer }) 
       </div>
     </div>
   );
-
-  return createPortal(modalEl, document.body);
 }
 
 
