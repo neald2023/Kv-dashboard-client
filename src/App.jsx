@@ -946,158 +946,206 @@ export default function App() {
     );
   };
 
-  /* -------- BOOKINGS (with tax + stable typing) -------- */
-  const Bookings = () => {
-    const TAX_RATE = 0.08; // 8%
+/* ================== BOOKINGS (with tax) ================== */
+const Bookings = () => {
+  const TAX_RATE = 0.08; // 8%
 
-    // keep a local "text" buffer for price so typing is smooth
-    const priceStr = String(bookingDraft.price ?? "");
-    const subtotal = Number(priceStr || 0);
-    const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
-    const total = Math.round((subtotal + tax) * 100) / 100;
-
-    const custOptions = customers.map(c=>({label:`${c.name} — ${c.phone || ""}`, value:c.id}));
-    const vehOptions  = vehicles.map(v=>({label:`${v.year||""} ${v.make||""} ${v.model||""} • ${v.plate||""}`, value:v.id}));
-
-    const setDraft = (patch)=> setBookingDraft(d=>({ ...d, ...patch }));
-
-    async function saveBooking() {
-      const body = {
-        customerId: bookingDraft.customerId,
-        vehicleId: bookingDraft.vehicleId,
-        startDate: bookingDraft.start || bookingDraft.startDate,
-        endDate:   bookingDraft.end   || bookingDraft.endDate,
-        price:     subtotal,
-        taxRate:   TAX_RATE,
-        tax,
-        total,
-        notes:     bookingDraft.notes || "",
-      };
-      try {
-        await send("/bookings", "POST", body);
-        setBookings(await get("/bookings"));
-        setVehicles(await get("/vehicles"));
-        setSummary(await get("/stats/summary").catch(()=>summary));
-      } catch {}
-      setNewBookingOpen(false);
-      setBookingDraft({ customerId:"", vehicleId:"", start:"", end:"", price:"", notes:"" });
-    }
-
-    async function mark(id, status) {
-      try {
-        await send(`/bookings/${id}`, "PUT", { status });
-        setBookings(await get("/bookings"));
-        setVehicles(await get("/vehicles"));
-        setSummary(await get("/stats/summary").catch(()=>summary));
-      } catch {}
-    }
-
+  // --- local helper so typing in Price is smooth (no 1-char issue)
+  function PriceField({ value, onChange }) {
+    const [text, setText] = React.useState(String(value ?? ""));
+    React.useEffect(() => { setText(String(value ?? "")); }, [value]);
     return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Bookings</h2>
-          <button className="btn" onClick={()=>setNewBookingOpen(true)}>+ New Booking</button>
-        </div>
+      <Inp
+        inputMode="decimal"
+        placeholder="e.g. 100"
+        value={text}
+        onChange={(e) => {
+          const raw = e.target.value || "";
+          const cleaned = raw.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
+          setText(cleaned);
+          onChange?.(cleaned);
+        }}
+      />
+    );
+  }
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left border-b border-slate-700">
-                <th className="py-2 pr-4">Customer</th>
-                <th className="py-2 pr-4">Vehicle</th>
-                <th className="py-2 pr-4">Start</th>
-                <th className="py-2 pr-4">End</th>
-                <th className="py-2 pr-4">Status</th>
-                <th className="py-2 pr-2 text-right">Actions</th>
+  // options for searchable selects
+  const custOptions = customers.map(c => ({
+    label: `${c.name} — ${c.phone || ""}`,
+    value: c.id,
+  }));
+  const vehOptions = vehicles.map(v => ({
+    label: `${v.year || ""} ${v.make || ""} ${v.model || ""} • ${v.plate || ""}`,
+    value: v.id,
+  }));
+
+  // helper to update draft without losing other fields
+  const setDraft = (patch) => setBookingDraft(d => ({ ...d, ...patch }));
+
+  // keep price as a string while typing, then compute numbers for totals
+  const subtotal = Number(bookingDraft.price || 0);
+  const tax = Math.round(subtotal * TAX_RATE * 100) / 100;
+  const total = Math.round((subtotal + tax) * 100) / 100;
+
+  async function saveBooking() {
+    const body = {
+      customerId: bookingDraft.customerId,
+      vehicleId:  bookingDraft.vehicleId,
+      startDate:  bookingDraft.start || bookingDraft.startDate,
+      endDate:    bookingDraft.end   || bookingDraft.endDate,
+      price:      subtotal,          // base price (number)
+      taxRate:    TAX_RATE,
+      tax,
+      total,
+      notes:      bookingDraft.notes || "",
+    };
+    try {
+      await send("/bookings", "POST", body);
+      setBookings(await get("/bookings"));
+      setVehicles(await get("/vehicles"));
+      setSummary(await get("/stats/summary").catch(() => summary));
+    } catch {}
+    setNewBookingOpen(false);
+    setBookingDraft({ customerId:"", vehicleId:"", start:"", end:"", price:"", notes:"" });
+  }
+
+  async function mark(id, status) {
+    try {
+      await send(`/bookings/${id}`, "PUT", { status });
+      setBookings(await get("/bookings"));
+      setVehicles(await get("/vehicles"));
+      setSummary(await get("/stats/summary").catch(() => summary));
+    } catch {}
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold">Bookings</h2>
+        <button className="btn" onClick={() => setNewBookingOpen(true)}>+ New Booking</button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left border-b border-slate-700">
+              <th className="py-2 pr-4">Customer</th>
+              <th className="py-2 pr-4">Vehicle</th>
+              <th className="py-2 pr-4">Start</th>
+              <th className="py-2 pr-4">End</th>
+              <th className="py-2 pr-4">Status</th>
+              <th className="py-2 pr-2 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {bookings.map(b => {
+              const c = customers.find(x => x.id === b.customerId);
+              const v = vehicles.find(x => x.id === b.vehicleId);
+              return (
+                <tr key={b.id} className="border-b border-slate-800">
+                  <td className="py-2 pr-4">{c?.name || b.customer || b.customerId}</td>
+                  <td className="py-2 pr-4">
+                    {v ? `${v.year || ""} ${v.make || ""} ${v.model || ""} • ${v.plate || ""}` : (b.vehicle || b.vehicleId)}
+                  </td>
+                  <td className="py-2 pr-4">{new Date(b.start ?? b.startDate).toLocaleString()}</td>
+                  <td className="py-2 pr-4">{new Date(b.end ?? b.endDate).toLocaleString()}</td>
+                  <td className="py-2 pr-4">
+                    {b.status === "active"    ? <Pill tone="warn">active</Pill> :
+                     b.status === "completed" ? <Pill tone="ok">completed</Pill> :
+                                                <Pill>canceled</Pill>}
+                  </td>
+                  <td className="py-2 pr-2 text-right">
+                    <button className="btn-xs mr-2" onClick={() => mark(b.id, "active")}>Start</button>
+                    <button className="btn-xs mr-2" onClick={() => mark(b.id, "completed")}>Complete</button>
+                    <button className="btn-xs" onClick={() => mark(b.id, "canceled")}>Cancel</button>
+                  </td>
+                </tr>
+              );
+            })}
+            {!bookings.length && (
+              <tr>
+                <td className="py-6 text-slate-400" colSpan={6}>
+                  No bookings yet. Click <b>+ New Booking</b> to create one.
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {bookings.map(b=>{
-                const c = customers.find(x=>x.id===b.customerId);
-                const v = vehicles.find(x=>x.id===b.vehicleId);
-                return (
-                  <tr key={b.id} className="border-b border-slate-800">
-                    <td className="py-2 pr-4">{c?.name || b.customer || b.customerId}</td>
-                    <td className="py-2 pr-4">{v ? `${v.year||""} ${v.make||""} ${v.model||""} • ${v.plate||""}` : b.vehicle || b.vehicleId}</td>
-                    <td className="py-2 pr-4">{new Date(b.start ?? b.startDate).toLocaleString()}</td>
-                    <td className="py-2 pr-4">{new Date(b.end ?? b.endDate).toLocaleString()}</td>
-                    <td className="py-2 pr-4">
-                      {b.status==="active"?<Pill tone="warn">active</Pill>: b.status==="completed"?<Pill tone="ok">completed</Pill>:<Pill>canceled</Pill>}
-                    </td>
-                    <td className="py-2 pr-2 text-right">
-                      <button className="btn-xs mr-2" onClick={()=>mark(b.id, "active")}>Start</button>
-                      <button className="btn-xs mr-2" onClick={()=>mark(b.id, "completed")}>Complete</button>
-                      <button className="btn-xs" onClick={()=>mark(b.id, "canceled")}>Cancel</button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {!bookings.length && (<tr><td className="py-6 text-slate-400" colSpan={6}>No bookings yet. Click <b>+ New Booking</b>.</td></tr>)}
-            </tbody>
-          </table>
-        </div>
+            )}
+          </tbody>
+        </table>
+      </div>
 
-        <Modal
-          open={newBookingOpen}
-          onClose={()=>setNewBookingOpen(false)}
-          title="Create Booking"
-          footer={
-            <>
-              <button className="btn" onClick={()=>setNewBookingOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={saveBooking}>Save Booking</button>
-            </>
-          }
-        >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs mb-1 opacity-70">Customer</div>
-              <SearchableSelect options={custOptions} value={bookingDraft.customerId} onChange={(val)=>setDraft({customerId:val})}/>
-            </div>
-            <div>
-              <div className="text-xs mb-1 opacity-70">Vehicle</div>
-              <SearchableSelect options={vehOptions} value={bookingDraft.vehicleId} onChange={(val)=>setDraft({vehicleId:val})}/>
-            </div>
-            <div>
-              <div className="text-xs mb-1 opacity-70">Start</div>
-              <Inp type="datetime-local" value={bookingDraft.start || ""} onChange={(e)=>setDraft({start:e.target.value})}/>
-            </div>
-            <div>
-              <div className="text-xs mb-1 opacity-70">End</div>
-              <Inp type="datetime-local" value={bookingDraft.end || ""} onChange={(e)=>setDraft({end:e.target.value})}/>
-            </div>
-            <div>
-              <div className="text-xs mb-1 opacity-70">Price (base)</div>
-              <Inp
-                inputMode="decimal"
-                placeholder="e.g. 100"
-                value={String(bookingDraft.price ?? "")}
-                onChange={(e)=>{
-                  const raw = e.target.value || "";
-                  const cleaned = raw.replace(/[^\d.]/g,"").replace(/(\..*)\./g, "$1");
-                  setDraft({ price: cleaned });
-                }}
-              />
-            </div>
+      <Modal
+        open={newBookingOpen}
+        onClose={() => setNewBookingOpen(false)}
+        title="Create Booking"
+        footer={
+          <>
+            <button className="btn" onClick={() => setNewBookingOpen(false)}>Cancel</button>
+            <button className="btn btn-primary" onClick={saveBooking}>Save Booking</button>
+          </>
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs mb-1 opacity-70">Customer</div>
+            <SearchableSelect
+              options={custOptions}
+              value={bookingDraft.customerId}
+              onChange={(val) => setDraft({ customerId: val })}
+            />
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">Vehicle</div>
+            <SearchableSelect
+              options={vehOptions}
+              value={bookingDraft.vehicleId}
+              onChange={(val) => setDraft({ vehicleId: val })}
+            />
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">Start</div>
+            <Inp
+              type="datetime-local"
+              value={bookingDraft.start || ""}
+              onChange={(e) => setDraft({ start: e.target.value })}
+            />
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">End</div>
+            <Inp
+              type="datetime-local"
+              value={bookingDraft.end || ""}
+              onChange={(e) => setDraft({ end: e.target.value })}
+            />
+          </div>
+          <div>
+            <div className="text-xs mb-1 opacity-70">Price (base)</div>
+            <PriceField
+              value={bookingDraft.price}
+              onChange={(cleaned) => setDraft({ price: cleaned })}
+            />
+          </div>
 
-            <div className="md:col-span-2 grid grid-cols-2 gap-2">
-              <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between">
-                <span className="text-xs opacity-70">Subtotal</span>
-                <span>${subtotal.toFixed(2)}</span>
-              </div>
-              <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between">
-                <span className="text-xs opacity-70">Tax (8%)</span>
-                <span>${tax.toFixed(2)}</span>
-              </div>
-              <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between col-span-2">
-                <span className="text-xs opacity-70">Total</span>
-                <span className="text-lg font-semibold">${total.toFixed(2)}</span>
-              </div>
+          {/* Subtotal / Tax / Total */}
+          <div className="md:col-span-2 grid grid-cols-2 gap-2">
+            <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between">
+              <span className="text-xs opacity-70">Subtotal</span>
+              <span>${subtotal.toFixed(2)}</span>
+            </div>
+            <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between">
+              <span className="text-xs opacity-70">Tax (8%)</span>
+              <span>${tax.toFixed(2)}</span>
+            </div>
+            <div className="px-3 py-2 rounded bg-slate-900 border border-slate-700 flex items-center justify-between col-span-2">
+              <span className="text-xs opacity-70">Total</span>
+              <span className="text-lg font-semibold">${total.toFixed(2)}</span>
             </div>
           </div>
-        </Modal>
-      </div>
-    );
-  };
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
 
   /* -------- FINANCES (simple) -------- */
   const Finances = () => {
